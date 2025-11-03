@@ -1,15 +1,15 @@
 /* =========================================
-   Depósito PIX – front
+   Depósito PIX – front (produção)
    - Cria modal do QR por JS
    - Chama backend Efi (/api/pix/cob e /api/pix/status/:txid)
-   - Ao confirmar: tenta salvar no servidor (universal);
-     se não houver endpoint público, cai para localStorage.
+   - Ao confirmar: registra no servidor (/api/pix/confirmar)
+     e cai para localStorage se o servidor rejeitar
    ========================================= */
 
-// Usa o mesmo domínio da página (Render/produção)
+// Usa o mesmo domínio/origem (Render/produção)
 const API = window.location.origin;
 
-// ===== Seletores =====
+/* ===== Seletores ===== */
 const cpfInput    = document.querySelector('#cpf');
 const nomeInput   = document.querySelector('#nome');
 const tipoSelect  = document.querySelector('#tipoChave');
@@ -27,51 +27,37 @@ const rChaveLi = document.querySelector('#r-chave-li');
 const rChave   = document.querySelector('#r-chave');
 const rValor   = document.querySelector('#r-valor');
 
-// ===== Utils =====
+/* ===== Utils ===== */
 document.querySelector('#ano') && (document.querySelector('#ano').textContent = new Date().getFullYear());
 
 function notify(msg, isError=false, time=3200){
-  if(!toast) { alert(msg); return; }
+  if(!toast){ alert(msg); return; }
   toast.textContent = msg;
   toast.style.borderColor = isError ? 'rgba(255,92,122,.45)' : 'rgba(0,209,143,.45)';
   toast.classList.add('show');
   setTimeout(()=>toast.classList.remove('show'), time);
 }
-
 function centsToBRL(c){ return (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 function toCentsMasked(str){ return Number((str||'').replace(/\D/g,'')||0); }
-function getMeta(name){
-  const el = document.querySelector(`meta[name="${name}"]`);
-  return el ? el.content : '';
-}
 
-// ===== Persistência =====
-// 1) Salva no servidor (universal) se existir endpoint público e app-key
-async function saveOnServer({ nome, valorCentavos, tipo, chave }){
-  // meta opcional: <meta name="app-key" content="SUA_CHAVE">
-  const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
-  const res = await fetch(`${API}/api/public/bancas`, {
+/* ===== Persistência ===== */
+
+// 1) Salva UNIVERSAL no servidor (rota pública que valida o TXID e grava)
+async function saveOnServer({ txid, nome, valorCentavos, tipo, chave }){
+  const res = await fetch(`${API}/api/pix/confirmar`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(APP_KEY ? {'X-APP-KEY': APP_KEY} : {})
-    },
-    body: JSON.stringify({
-      nome,
-      depositoCents: valorCentavos,
-      pixType:  tipo,
-      pixKey:   chave
-    })
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ txid, nome, valorCentavos, tipo, chave })
   });
   if(!res.ok){
-    // 404 ou 401/403/500 -> não existe ou não autorizado → deixa subir erro
-    const txt = await res.text().catch(()=> '');
-    throw new Error(`Falha ao salvar no servidor (${res.status}) ${txt}`);
+    let msg = '';
+    try { const j = await res.json(); msg = j?.error || ''; } catch {}
+    throw new Error(msg || `HTTP ${res.status}`);
   }
-  return res.json().catch(()=> ({}));
+  return res.json();
 }
 
-// 2) Fallback: salva no localStorage (visível só neste navegador)
+// 2) Fallback local (visível só neste navegador)
 function saveLocal({ nome, valorCentavos, tipo, chave }){
   const registro = {
     id: Date.now().toString(),
@@ -86,7 +72,7 @@ function saveLocal({ nome, valorCentavos, tipo, chave }){
   localStorage.setItem('bancas', JSON.stringify(bancas));
 }
 
-// ===== Máscaras & Resumo =====
+/* ===== Máscaras & Resumo ===== */
 cpfInput.addEventListener('input', () => {
   let v = cpfInput.value.replace(/\D/g,'').slice(0,11);
   v = v.replace(/(\d{3})(\d)/,'$1.$2')
@@ -95,7 +81,6 @@ cpfInput.addEventListener('input', () => {
   cpfInput.value = v;
   rCpf.textContent = v || '—';
 });
-
 nomeInput.addEventListener('input', () => rNome.textContent = nomeInput.value.trim() || '—');
 
 tipoSelect.addEventListener('change', () => {
@@ -134,7 +119,7 @@ valorInput.addEventListener('input', () => {
   rValor.textContent = money;
 });
 
-// ===== Validações =====
+/* ===== Validações ===== */
 function isCPFValid(cpf){
   cpf = (cpf||'').replace(/\D/g,'');
   if(cpf.length !== 11 || /^([0-9])\1+$/.test(cpf)) return false;
@@ -147,45 +132,7 @@ function isCPFValid(cpf){
 function isEmail(v){ return /.+@.+\..+/.test(v); }
 function showError(sel, ok){ const el = document.querySelector(sel); ok ? el.classList.remove('show') : el.classList.add('show'); }
 
-// ===== Submit =====
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const cpfOk   = isCPFValid(cpfInput.value);
-  const nomeOk  = nomeInput.value.trim().length > 2;
-  const tipo    = tipoSelect.value;
-  let chaveOk   = true;
-  if (tipo !== 'cpf'){
-    const v = chaveInput.value.trim();
-    if (tipo === 'email')         chaveOk = isEmail(v);
-    else if (tipo === 'telefone') chaveOk = v.replace(/\D/g,'').length === 11;
-    else                          chaveOk = v.length >= 10; // aleatória
-  }
-  const valorCentavos = toCentsMasked(valorInput.value);
-  const valorOk       = valorCentavos >= 1000; // R$10,00
-
-  showError('#cpfError',  cpfOk);
-  showError('#nomeError', nomeOk);
-  showError('#chaveError',chaveOk);
-  showError('#valorError',valorOk);
-
-  if (!(cpfOk && nomeOk && chaveOk && valorOk)){
-    notify('Por favor, corrija os campos destacados.', true);
-    return;
-  }
-
-  const dados = {
-    nome:  nomeInput.value.trim(),
-    cpf:   cpfInput.value,
-    tipo:  tipoSelect.value,
-    chave: (tipoSelect.value === 'cpf' ? cpfInput.value : (chaveInput.value || '').trim()),
-    valorCentavos
-  };
-
-  await criarCobrancaPIX(dados);
-});
-
-// ===== Modal de QR (criado por JS) =====
+/* ===== Modal de QR (dinâmico) ===== */
 function ensurePixStyles(){
   if (!document.getElementById('pixCss')) {
     const link = document.createElement('link');
@@ -197,7 +144,6 @@ function ensurePixStyles(){
 }
 function ensurePixModal(){
   ensurePixStyles();
-
   let dlg = document.querySelector('#pixModal');
   if (dlg) return dlg;
 
@@ -267,75 +213,116 @@ function ensurePixModal(){
   return dlg;
 }
 
-// ===== Backend Efi =====
-async function criarCobrancaPIX(dados){
-  try{
-    // 1) criar cobrança
-    const resp = await fetch(`${API}/api/pix/cob`, {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ nome: dados.nome, cpf: dados.cpf, valorCentavos: dados.valorCentavos })
-    });
-    if(!resp.ok){
-      let err = 'Falha ao criar PIX';
-      try{ const j = await resp.json(); if(j.error) err = j.error; }catch{}
-      throw new Error(err);
-    }
-    const { txid, emv, qrPng } = await resp.json();
+/* ===== Backend Efi: criar cobrança ===== */
+async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
+  const resp = await fetch(`${API}/api/pix/cob`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ nome, cpf, valorCentavos })
+  });
+  if(!resp.ok){
+    let err = 'Falha ao criar PIX';
+    try{ const j = await resp.json(); if(j.error) err = j.error; }catch{}
+    throw new Error(err);
+  }
+  return resp.json(); // { txid, emv, qrPng }
+}
 
-    // 2) abrir modal QR
+/* ===== Submit ===== */
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const cpfOk   = isCPFValid(cpfInput.value);
+  const nomeOk  = nomeInput.value.trim().length > 2;
+  const tipo    = tipoSelect.value;
+  let chaveOk   = true;
+  if (tipo !== 'cpf'){
+    const v = chaveInput.value.trim();
+    if (tipo === 'email')         chaveOk = isEmail(v);
+    else if (tipo === 'telefone') chaveOk = v.replace(/\D/g,'').length === 11;
+    else                          chaveOk = v.length >= 10; // aleatória
+  }
+  const valorCentavos = toCentsMasked(valorInput.value);
+  const valorOk       = valorCentavos >= 1000; // R$10,00
+
+  showError('#cpfError',  cpfOk);
+  showError('#nomeError', nomeOk);
+  showError('#chaveError',chaveOk);
+  showError('#valorError',valorOk);
+
+  if (!(cpfOk && nomeOk && chaveOk && valorOk)){
+    notify('Por favor, corrija os campos destacados.', true);
+    return;
+  }
+
+  const dados = {
+    nome:  nomeInput.value.trim(),
+    cpf:   cpfInput.value,
+    tipo:  tipoSelect.value,
+    chave: (tipoSelect.value === 'cpf' ? cpfInput.value : (chaveInput.value || '').trim()),
+    valorCentavos
+  };
+
+  try{
+    // 1) criar a cobrança
+    const { txid, emv, qrPng } = await criarCobrancaPIX({
+      nome: dados.nome, cpf: dados.cpf, valorCentavos: dados.valorCentavos
+    });
+
+    // 2) abrir modal com QR
     const dlg = ensurePixModal();
     const img = dlg.querySelector('#pixQr');
     const emvEl = dlg.querySelector('#pixEmv');
     const st = dlg.querySelector('#pixStatus');
-
     img.src = qrPng;
     emvEl.value = emv;
     st.textContent = 'Aguardando pagamento…';
     if(typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open','');
 
-    // 3) polling até CONCLUIDA
-    const check = async () => {
+    // 3) polling /api/pix/status/:txid até CONCLUIDA
+    async function check(){
       const s = await fetch(`${API}/api/pix/status/${encodeURIComponent(txid)}`).then(r=>r.json());
-      if (s.status === 'CONCLUIDA') {
-        st.textContent = 'Pagamento confirmado! ✅';
+      return s.status === 'CONCLUIDA';
+    }
 
-        // Tenta salvar UNIVERSAL no servidor…
-        try{
-          await saveOnServer({
-            nome: dados.nome,
-            valorCentavos: dados.valorCentavos,
-            tipo: dados.tipo,
-            chave: dados.chave
-          });
-        }catch(_e){
-          // …se não houver endpoint público, salva localmente
-          saveLocal({
-            nome: dados.nome,
-            valorCentavos: dados.valorCentavos,
-            tipo: dados.tipo,
-            chave: dados.chave
-          });
-        }
-
-        // fecha modal e avisa
-        setTimeout(()=>{
-          dlg.close();
-          notify('Pagamento confirmado! Registro salvo.', false, 4500);
-        }, 900);
-
-        return true;
-      }
-      return false;
-    };
-
-    let tries = 36; // 3 minutos (5s cada)
+    let tries = 36; // 3 min (5s)
     const timer = setInterval(async ()=>{
       tries--;
-      const done = await check();
-      if(done || tries<=0){
-        clearInterval(timer);
-        if(tries<=0) st.textContent = 'Tempo esgotado. Se já pagou, a confirmação aparecerá ao abrir a área.';
+      try{
+        const ok = await check();
+        if (ok) {
+          clearInterval(timer);
+          st.textContent = 'Pagamento confirmado! ✅';
+
+          // 4) registra de forma universal
+          try{
+            await saveOnServer({
+              txid,
+              nome: dados.nome,
+              valorCentavos: dados.valorCentavos,
+              tipo: dados.tipo,
+              chave: dados.chave
+            });
+          }catch(_err){
+            // fallback local se o servidor não aceitar
+            saveLocal({
+              nome: dados.nome,
+              valorCentavos: dados.valorCentavos,
+              tipo: dados.tipo,
+              chave: dados.chave
+            });
+          }
+
+          setTimeout(()=>{
+            dlg.close();
+            notify('Pagamento confirmado! Registro salvo.', false, 4500);
+          }, 900);
+        } else if (tries <= 0) {
+          clearInterval(timer);
+          st.textContent = 'Tempo esgotado. Se já pagou, a confirmação aparecerá na Área.';
+        }
+      }catch(loopErr){
+        console.error(loopErr);
       }
     }, 5000);
 
@@ -343,4 +330,4 @@ async function criarCobrancaPIX(dados){
     console.error(e);
     notify('Não foi possível iniciar o PIX. Tente novamente.', true);
   }
-}
+});

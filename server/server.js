@@ -376,6 +376,47 @@ app.get('/api/pagamentos', areaAuth, async (req, res) => {
   res.json(rows);
 });
 
+
+// >>> PUBLIC: confirmar pagamento PIX e registrar na tabela "bancas"
+// Recebe { txid, nome, valorCentavos, tipo, chave }
+// 1) confere no Efi se o txid está CONCLUIDA
+// 2) se estiver, insere em "bancas"
+app.post('/api/pix/confirmar', async (req, res) => {
+  try {
+    const { txid, nome, valorCentavos, tipo=null, chave=null } = req.body || {};
+    if (!txid || !nome || !valorCentavos || valorCentavos < 1) {
+      return res.status(400).json({ error: 'dados_invalidos' });
+    }
+
+    // valida no Efi
+    const token = await getAccessToken();
+    const { data } = await axios.get(
+      `${EFI_BASE_URL}/v2/cob/${encodeURIComponent(txid)}`,
+      { httpsAgent, headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    if (data.status !== 'CONCLUIDA') {
+      return res.status(409).json({ error: 'pix_nao_concluido', status: data.status });
+    }
+
+    // grava em "bancas" (Postgres)
+    const id = txid; // pode usar o próprio txid como id
+    await pool.query(
+      `INSERT INTO bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
+       VALUES ($1,$2,$3,NULL,$4,$5, now())
+       ON CONFLICT (id) DO NOTHING`,
+      [id, nome, valorCentavos, tipo, chave]
+    );
+
+    return res.json({ ok:true });
+  } catch (err) {
+    console.error('Erro /api/pix/confirmar:', err.response?.data || err.message);
+    return res.status(500).json({ error: 'falha_confirmar' });
+  }
+});
+
+
+
 app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
   const { status } = req.body || {};
   if (!['pago','nao_pago'].includes(status)) return res.status(400).json({ error: 'status_invalido' });
