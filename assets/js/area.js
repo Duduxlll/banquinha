@@ -1,11 +1,12 @@
 /* =========================================
-   area.js — Bancas & Pagamentos (via API) sem skeleton
-   - Transição suave entre abas (fade + leve slide)
-   - Mantém timers de auto-delete para "pago"
+   area.js — Bancas & Pagamentos (via API) suave
+   - Fade entre abas SEM “piscadas”
+   - Mostra próxima aba só depois dos dados
+   - Mantém seus recursos: status pago/nao, auto-delete, fazer PIX etc.
    ========================================= */
 
 /* ========== Utils base ========== */
-const API = window.location.origin; // mesmo domínio
+const API = window.location.origin;
 const qs  = (s, r=document) => r.querySelector(s);
 const qsa = (s, r=document) => [...r.querySelectorAll(s)];
 
@@ -16,15 +17,13 @@ function getCookie(name) {
 
 async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers||{}) };
-  // Envia CSRF em métodos que alteram estado
   if (['POST','PUT','PATCH','DELETE'].includes((opts.method||'GET').toUpperCase())) {
     const csrf = getCookie('csrf');
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
   const res = await fetch(`${API}${path}`, { credentials:'include', ...opts, headers });
   if (!res.ok) {
-    let err;
-    try { err = await res.json(); } catch {}
+    let err; try { err = await res.json(); } catch {}
     throw new Error(err?.error || `HTTP ${res.status}`);
   }
   return res.status === 204 ? null : res.json();
@@ -48,7 +47,18 @@ const STATE = {
   timers: new Map(), // id => timeoutId (auto-delete pagos)
 };
 
-/* ========== Carregamento (preenche STATE) ========== */
+/* ========== Helpers visuais ========== */
+function waitTransition(el, timeout=260){
+  return new Promise(resolve=>{
+    if(!el) return resolve();
+    let done = false;
+    const end = (e)=>{ if(done) return; done=true; el.removeEventListener('transitionend', end); clearTimeout(tid); resolve(); };
+    const tid = setTimeout(end, timeout);
+    el.addEventListener('transitionend', end);
+  });
+}
+
+/* ========== Carregamento (STATE) ========== */
 async function loadBancas() {
   const list = await apiFetch(`/api/bancas`);
   STATE.bancas = list.sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
@@ -102,7 +112,6 @@ function renderPagamentos(){
     const isPago = p.status === 'pago';
     const statusTxt = isPago ? 'Pago' : 'Não pago';
     const statusCls = isPago ? 'status--pago' : 'status--nao';
-
     return `
       <tr data-id="${p.id}">
         <td>${esc(p.nome)}</td>
@@ -116,7 +125,6 @@ function renderPagamentos(){
                     data-status="${p.status}">
               ${statusTxt} <span class="caret"></span>
             </button>
-
             <button class="btn btn--primary" data-action="fazer-pix" data-id="${p.id}">Fazer PIX</button>
             <button class="btn btn--danger"  data-action="del-pag"   data-id="${p.id}">Excluir</button>
           </div>
@@ -127,55 +135,55 @@ function renderPagamentos(){
   filtrarTabela(tbodyPags, buscaInput?.value || '');
 }
 
-/* ========== Transição suave entre abas (sem overlay/skeleton) ========== */
+/* ========== Troca de abas (sem flicker) ========== */
 async function setTab(tab){
   if (TAB === tab) return;
+
+  const vB = tabBancasEl;
+  const vP = tabPagamentosEl;
+  const toShow = (tab === 'bancas') ? vB : vP;
+  const toHide = (tab === 'bancas') ? vP : vB;
 
   // ativa botão
   qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
 
-  const leaving = (TAB === 'bancas') ? tabBancasEl : tabPagamentosEl;
-  const entering = (tab === 'bancas') ? tabBancasEl : tabPagamentosEl;
+  // trava altura do conteúdo pra não “pular”
+  const content = qs('.content');
+  if (content) content.style.minHeight = content.offsetHeight + 'px';
 
-  // inicia fade-out da aba atual
-  leaving?.classList.add('hiding');
-  leaving?.classList.remove('show');
+  // fade de saída da aba atual
+  toHide?.classList.add('hiding');
+  await waitTransition(toHide, 260);
+  toHide?.classList.remove('hiding','show');
 
-  // aguarda um frame p/ aplicar CSS
-  await new Promise(r => requestAnimationFrame(()=>r()));
-
-  // mostra a próxima com fade-in (conteúdo já renderizado do último load)
-  entering?.classList.add('show');
-  entering?.classList.remove('hiding');
-
-  // atualiza a aba ativa
+  // atualiza estado e carrega dados da próxima ABA
   TAB = tab;
-  localStorage.setItem('area_tab', TAB);
+  localStorage.setItem('area_tab', tab);
+  if (TAB==='bancas') await loadBancas();
+  else                await loadPagamentos();
 
-  // re-carrega em background (sem skeleton)
-  try {
-    if (TAB==='bancas') await loadBancas(); else await loadPagamentos();
-    render(); // atualiza conteúdo suavemente (sem piscar)
-  } catch(e){ console.error(e); }
+  // renderiza já com dados prontos (evita tela “vazia”)
+  render();
+
+  // libera o lock de altura no próximo frame
+  requestAnimationFrame(()=>{ if(content) content.style.minHeight = ''; });
 }
 
+/* ========== Refresh (aba atual) ========== */
 async function refresh(){
-  if (TAB==='bancas'){
-    await loadBancas();
-  } else {
-    await loadPagamentos();
-  }
+  if (TAB==='bancas') await loadBancas();
+  else                await loadPagamentos();
   render();
 }
 
+/* ========== AÇÕES ==========\ */
 function getBancaInputById(id){
   return document.querySelector(`input[data-role="banca"][data-id="${CSS.escape(id)}"]`);
 }
 
 async function toPagamento(id){
-  // salva edição do input (se houver) antes de mover
   const inp = getBancaInputById(id);
   if (inp) {
     const cents = toCents(inp.value);
@@ -184,9 +192,7 @@ async function toPagamento(id){
       body: JSON.stringify({ bancaCents: cents })
     });
   }
-
   await apiFetch(`/api/bancas/${encodeURIComponent(id)}/to-pagamento`, { method:'POST' });
-
   TAB = 'pagamentos';
   localStorage.setItem('area_tab', TAB);
   await Promise.all([loadBancas(), loadPagamentos()]);
@@ -216,10 +222,8 @@ async function setStatus(id, value){
 
   const item = STATE.pagamentos.find(x=>x.id===id);
   if (!item) return;
-
-  if (value === 'pago') {
-    scheduleAutoDelete(item);
-  } else {
+  if (value === 'pago') scheduleAutoDelete(item);
+  else {
     const t = STATE.timers.get(id);
     if (t){ clearTimeout(t); STATE.timers.delete(id); }
   }
@@ -232,14 +236,10 @@ function scheduleAutoDelete(item){
   const left = (new Date(paidAt).getTime() + 3*60*1000) - Date.now();
   const prev = STATE.timers.get(id);
   if (prev) clearTimeout(prev);
-  if (left <= 0) {
-    deletePagamento(id).catch(()=>{});
-    return;
-  }
+  if (left <= 0) { deletePagamento(id).catch(()=>{}); return; }
   const tid = setTimeout(()=> deletePagamento(id).catch(()=>{}), left);
   STATE.timers.set(id, tid);
 }
-
 function setupAutoDeleteTimers(){
   STATE.timers.forEach(t=> clearTimeout(t));
   STATE.timers.clear();
@@ -248,7 +248,7 @@ function setupAutoDeleteTimers(){
   });
 }
 
-/* ========== Modal simples “Fazer PIX” ========== */
+/* ========== Modal “Fazer PIX” ========== */
 function abrirPixModal(id){
   const p = STATE.pagamentos.find(x=>x.id===id);
   if(!p) return;
@@ -294,7 +294,7 @@ function abrirPixModal(id){
   dlg.showModal();
 }
 
-/* ========== MENU FLUTUANTE — Pago / Não pago ========== */
+/* ========== MENU FLUTUANTE Pago/Não pago ========== */
 let statusMenuEl = null;
 let statusMenuId = null;
 
@@ -324,7 +324,6 @@ function ensureStatusMenu(){
 function showStatusMenu(anchorBtn, id, current){
   const m = ensureStatusMenu();
   statusMenuId = id;
-
   qsa('.status-item', m).forEach(b=>{
     b.classList.toggle('active', b.dataset.value === current);
   });
@@ -373,7 +372,7 @@ document.addEventListener('click', (e)=>{
 });
 qsa('.table-wrap').forEach(w=> w.addEventListener('scroll', hideStatusMenu, {passive:true}));
 
-/* ========== EVENTOS GLOBAIS ========== */
+/* ========== Eventos globais ========== */
 qsa('.nav-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> setTab(btn.dataset.tab));
 });
@@ -381,7 +380,6 @@ qsa('.nav-btn').forEach(btn=>{
 document.addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-action]');
   if(!btn) return;
-
   const {action, id} = btn.dataset;
   if(action==='to-pagamento') return toPagamento(id).catch(console.error);
   if(action==='del-banca')    return deleteBanca(id).catch(console.error);
@@ -389,7 +387,7 @@ document.addEventListener('click', (e)=>{
   if(action==='del-pag')      return deletePagamento(id).catch(console.error);
 });
 
-// edição da Banca (R$)
+/* edição inline da Banca (R$) */
 document.addEventListener('input', (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
@@ -400,7 +398,7 @@ document.addEventListener('input', (e)=>{
   inp.value = fmtBRL(parseInt(v,10));
 });
 
-// salvar PATCH ao sair do campo
+/* salvar PATCH ao sair do campo */
 document.addEventListener('blur', async (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
@@ -418,7 +416,7 @@ document.addEventListener('blur', async (e)=>{
   }
 }, true);
 
-// busca
+/* busca */
 function filtrarTabela(tbody, q){
   if(!tbody) return;
   const query = (q||'').trim().toLowerCase();
@@ -434,15 +432,14 @@ buscaInput?.addEventListener('input', ()=>{
 
 /* ========== start ========== */
 document.addEventListener('DOMContentLoaded', async ()=>{
-  // classes para transição (veja CSS abaixo)
-  tabBancasEl?.classList.add('tab-view');
+  // habilita transições no CSS
+  tabBancasEl?.classList.add('tab-view', 'show');
   tabPagamentosEl?.classList.add('tab-view');
-
   qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === TAB);
   });
 
-  // pré-carrega as duas listas (sem overlay)
+  // pré-carrega as duas listas (aquecimento)
   await Promise.allSettled([loadBancas(), loadPagamentos()]);
   render();
   setupAutoDeleteTimers();
