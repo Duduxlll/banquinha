@@ -216,12 +216,22 @@ body{
   box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.04) !important;
 }
 
-.table-wrap{
-  scrollbar-gutter: stable both-edges; /* mantém espaço do scroll estável */
+/* 1) reserva o espaço do scroll (nada de “pular”) */
+html, body, .table-wrap { scrollbar-gutter: stable both-edges; }
+
+/* 2) cabeçalho colado até os cantos do card e largura exata */
+.card .table-wrap { padding: 0; }            /* sem respiro lateral */
+.table { width: 100%; table-layout: fixed; } /* colunas firmes */
+.table thead th:first-child { border-top-left-radius: 12px; }
+.table thead th:last-child  { border-top-right-radius: 12px; text-align: left; }
+
+/* 3) animação suave das abas (sem skeleton) — garante o fade/slide */
+.tab.tab-view {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .22s ease, transform .22s ease;
+  will-change: opacity, transform;
 }
-.tab.tab-view{
-  opacity:0; transform: translateY(6px);
-  transition: opacity .22s cubic-bezier(.22,.61,.36,1), transform .22s cubic-bezier(.22,.61,.36,1);
-}
-.tab.tab-view.show{ opacity:1; transform: translateY(0); }
+.tab.tab-view.show { opacity: 1; transform: translateY(0); }
+
 .tab.tab-view.hiding{ opacity:0; transform: translateY(6px); }

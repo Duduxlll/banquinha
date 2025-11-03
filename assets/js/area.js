@@ -1,8 +1,8 @@
 /* =========================================
    area.js — Bancas & Pagamentos (via API) suave
-   - Fade entre abas SEM “piscadas”
-   - Mostra próxima aba só depois dos dados
-   - Mantém seus recursos: status pago/nao, auto-delete, fazer PIX etc.
+   - Render de aba único (sem piscar duas vezes)
+   - Troca de abas com fade/slide (só CSS)
+   - Cabeçalho e scroll estáveis
    ========================================= */
 
 /* ========== Utils base ========== */
@@ -14,7 +14,6 @@ function getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([$?*|{}\]\\^])/g, '\\$1') + '=([^;]*)'));
   return m ? decodeURIComponent(m[1]) : null;
 }
-
 async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers||{}) };
   if (['POST','PUT','PATCH','DELETE'].includes((opts.method||'GET').toUpperCase())) {
@@ -29,8 +28,8 @@ async function apiFetch(path, opts = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-const fmtBRL  = (c)=> (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const toCents = (s)=> { const d = (s||'').toString().replace(/\D/g,''); return d ? parseInt(d,10) : 0; };
+const fmtBRL  = c => (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const toCents = s => { const d = (s||'').toString().replace(/\D/g,''); return d ? parseInt(d,10) : 0; };
 const esc     = (s='') => s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
 /* ========== Elementos ========== */
@@ -44,21 +43,10 @@ let TAB = localStorage.getItem('area_tab') || 'bancas';
 const STATE = {
   bancas: [],
   pagamentos: [],
-  timers: new Map(), // id => timeoutId (auto-delete pagos)
+  timers: new Map(), // id => timeoutId
 };
 
-/* ========== Helpers visuais ========== */
-function waitTransition(el, timeout=260){
-  return new Promise(resolve=>{
-    if(!el) return resolve();
-    let done = false;
-    const end = (e)=>{ if(done) return; done=true; el.removeEventListener('transitionend', end); clearTimeout(tid); resolve(); };
-    const tid = setTimeout(end, timeout);
-    el.addEventListener('transitionend', end);
-  });
-}
-
-/* ========== Carregamento (STATE) ========== */
+/* ========== Data loaders ========== */
 async function loadBancas() {
   const list = await apiFetch(`/api/bancas`);
   STATE.bancas = list.sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
@@ -70,19 +58,7 @@ async function loadPagamentos() {
   return STATE.pagamentos;
 }
 
-/* ========== Render ========== */
-function render(){
-  if (TAB==='bancas'){
-    tabBancasEl.classList.add('show');
-    tabPagamentosEl.classList.remove('show');
-    renderBancas();
-  } else {
-    tabPagamentosEl.classList.add('show');
-    tabBancasEl.classList.remove('show');
-    renderPagamentos();
-  }
-}
-
+/* ========== Renderers ========== */
 function renderBancas(){
   const lista = STATE.bancas;
   tbodyBancas.innerHTML = lista.length ? lista.map(b => {
@@ -105,7 +81,6 @@ function renderBancas(){
 
   filtrarTabela(tbodyBancas, buscaInput?.value || '');
 }
-
 function renderPagamentos(){
   const lista = STATE.pagamentos;
   tbodyPags.innerHTML = lista.length ? lista.map(p => {
@@ -135,50 +110,41 @@ function renderPagamentos(){
   filtrarTabela(tbodyPags, buscaInput?.value || '');
 }
 
-/* ========== Troca de abas (sem flicker) ========== */
+/* ========== Troca de abas — sem re-render duplo ========== */
+function showOnly(tab){
+  const showB = tab === 'bancas';
+  tabBancasEl.classList.toggle('show', showB);
+  tabBancasEl.classList.add('tab-view');
+  tabPagamentosEl.classList.toggle('show', !showB);
+  tabPagamentosEl.classList.add('tab-view');
+}
 async function setTab(tab){
   if (TAB === tab) return;
-
-  const vB = tabBancasEl;
-  const vP = tabPagamentosEl;
-  const toShow = (tab === 'bancas') ? vB : vP;
-  const toHide = (tab === 'bancas') ? vP : vB;
-
-  // ativa botão
+  TAB = tab;
+  localStorage.setItem('area_tab', tab);
   qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
 
-  // trava altura do conteúdo pra não “pular”
-  const content = qs('.content');
-  if (content) content.style.minHeight = content.offsetHeight + 'px';
+  // alterna visuais primeiro (animação de CSS cuida do resto)
+  showOnly(tab);
 
-  // fade de saída da aba atual
-  toHide?.classList.add('hiding');
-  await waitTransition(toHide, 260);
-  toHide?.classList.remove('hiding','show');
-
-  // atualiza estado e carrega dados da próxima ABA
-  TAB = tab;
-  localStorage.setItem('area_tab', tab);
-  if (TAB==='bancas') await loadBancas();
-  else                await loadPagamentos();
-
-  // renderiza já com dados prontos (evita tela “vazia”)
-  render();
-
-  // libera o lock de altura no próximo frame
-  requestAnimationFrame(()=>{ if(content) content.style.minHeight = ''; });
+  try{
+    if (tab === 'bancas'){
+      await loadBancas();        // carrega
+      renderBancas();            // renderiza SOMENTE a aba atual
+    } else {
+      await loadPagamentos();
+      renderPagamentos();
+    }
+  }catch(e){ console.error(e); }
 }
 
-/* ========== Refresh (aba atual) ========== */
 async function refresh(){
-  if (TAB==='bancas') await loadBancas();
-  else                await loadPagamentos();
-  render();
+  if (TAB==='bancas'){ await loadBancas(); renderBancas(); }
+  else { await loadPagamentos(); renderPagamentos(); }
 }
 
-/* ========== AÇÕES ==========\ */
 function getBancaInputById(id){
   return document.querySelector(`input[data-role="banca"][data-id="${CSS.escape(id)}"]`);
 }
@@ -188,28 +154,26 @@ async function toPagamento(id){
   if (inp) {
     const cents = toCents(inp.value);
     await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, {
-      method:'PATCH',
-      body: JSON.stringify({ bancaCents: cents })
+      method:'PATCH', body: JSON.stringify({ bancaCents: cents })
     });
   }
   await apiFetch(`/api/bancas/${encodeURIComponent(id)}/to-pagamento`, { method:'POST' });
+  // muda para a aba Pagamentos e atualiza só ela
   TAB = 'pagamentos';
   localStorage.setItem('area_tab', TAB);
-  await Promise.all([loadBancas(), loadPagamentos()]);
-  render();
+  showOnly('pagamentos');
+  await loadPagamentos();
+  renderPagamentos();
   setupAutoDeleteTimers();
 }
 
 async function deleteBanca(id){
   await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, { method:'DELETE' });
-  await loadBancas();
-  render();
+  await loadBancas(); renderBancas();
 }
-
 async function deletePagamento(id){
   await apiFetch(`/api/pagamentos/${encodeURIComponent(id)}`, { method:'DELETE' });
-  await loadPagamentos();
-  render();
+  await loadPagamentos(); renderPagamentos();
   const t = STATE.timers.get(id);
   if (t){ clearTimeout(t); STATE.timers.delete(id); }
 }
@@ -217,8 +181,7 @@ async function deletePagamento(id){
 async function setStatus(id, value){
   const body = JSON.stringify({ status: value });
   await apiFetch(`/api/pagamentos/${encodeURIComponent(id)}`, { method:'PATCH', body });
-  await loadPagamentos();
-  render();
+  await loadPagamentos(); renderPagamentos();
 
   const item = STATE.pagamentos.find(x=>x.id===id);
   if (!item) return;
@@ -229,7 +192,7 @@ async function setStatus(id, value){
   }
 }
 
-/* ========== Auto delete de "pago" em 3 minutos ========== */
+/* ========== Auto delete de "pago" ========== */
 function scheduleAutoDelete(item){
   const { id, paidAt } = item;
   if (!paidAt) return;
@@ -294,7 +257,7 @@ function abrirPixModal(id){
   dlg.showModal();
 }
 
-/* ========== MENU FLUTUANTE Pago/Não pago ========== */
+/* ========== Menu flutuante de status ========== */
 let statusMenuEl = null;
 let statusMenuId = null;
 
@@ -307,46 +270,32 @@ function ensureStatusMenu(){
     <button class="status-item nao"  data-value="nao_pago">Não pago</button>
   `;
   document.body.appendChild(el);
-
   el.addEventListener('click', (e)=>{
     const btn = e.target.closest('button.status-item');
     if(!btn) return;
-    if(statusMenuId){
-      setStatus(statusMenuId, btn.dataset.value).catch(console.error);
-    }
+    if(statusMenuId){ setStatus(statusMenuId, btn.dataset.value).catch(console.error); }
     hideStatusMenu();
   });
-
-  statusMenuEl = el;
-  return el;
+  statusMenuEl = el; return el;
 }
-
 function showStatusMenu(anchorBtn, id, current){
   const m = ensureStatusMenu();
   statusMenuId = id;
-  qsa('.status-item', m).forEach(b=>{
-    b.classList.toggle('active', b.dataset.value === current);
-  });
-
+  qsa('.status-item', m).forEach(b=> b.classList.toggle('active', b.dataset.value === current));
   const r = anchorBtn.getBoundingClientRect();
   m.style.display = 'block';
   m.style.visibility = 'hidden';
   const mh = m.getBoundingClientRect().height;
   const mw = m.getBoundingClientRect().width;
   m.style.visibility = '';
-
   const spaceBelow = window.innerHeight - r.bottom;
   let top = r.bottom + 6;
-  if(spaceBelow < mh + 8){
-    top = r.top - mh - 6;  // dropup
-  }
+  if(spaceBelow < mh + 8){ top = r.top - mh - 6; }
   const left = Math.min(Math.max(8, r.left), window.innerWidth - mw - 8);
-
   m.style.top  = `${Math.round(top)}px`;
   m.style.left = `${Math.round(left)}px`;
   m.classList.add('show');
 }
-
 function hideStatusMenu(){
   if(statusMenuEl){
     statusMenuEl.classList.remove('show');
@@ -354,7 +303,6 @@ function hideStatusMenu(){
   }
   statusMenuId = null;
 }
-
 document.addEventListener('click', (e)=>{
   const openBtn = e.target.closest('button[data-action="status-open"]');
   if(openBtn){
@@ -376,7 +324,6 @@ qsa('.table-wrap').forEach(w=> w.addEventListener('scroll', hideStatusMenu, {pas
 qsa('.nav-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> setTab(btn.dataset.tab));
 });
-
 document.addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-action]');
   if(!btn) return;
@@ -386,8 +333,6 @@ document.addEventListener('click', (e)=>{
   if(action==='fazer-pix')    return abrirPixModal(id);
   if(action==='del-pag')      return deletePagamento(id).catch(console.error);
 });
-
-/* edição inline da Banca (R$) */
 document.addEventListener('input', (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
@@ -397,8 +342,6 @@ document.addEventListener('input', (e)=>{
   if(v.length<3) v = v.padStart(3,'0');
   inp.value = fmtBRL(parseInt(v,10));
 });
-
-/* salvar PATCH ao sair do campo */
 document.addEventListener('blur', async (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
@@ -406,14 +349,10 @@ document.addEventListener('blur', async (e)=>{
   const cents = toCents(inp.value);
   try{
     await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, {
-      method:'PATCH',
-      body: JSON.stringify({ bancaCents: cents })
+      method:'PATCH', body: JSON.stringify({ bancaCents: cents })
     });
-    await loadBancas();
-    render();
-  }catch(err){
-    console.error(err);
-  }
+    await loadBancas(); renderBancas();
+  }catch(err){ console.error(err); }
 }, true);
 
 /* busca */
@@ -432,15 +371,11 @@ buscaInput?.addEventListener('input', ()=>{
 
 /* ========== start ========== */
 document.addEventListener('DOMContentLoaded', async ()=>{
-  // habilita transições no CSS
-  tabBancasEl?.classList.add('tab-view', 'show');
-  tabPagamentosEl?.classList.add('tab-view');
-  qsa('.nav-btn').forEach(btn=>{
-    btn.classList.toggle('active', btn.dataset.tab === TAB);
-  });
-
-  // pré-carrega as duas listas (aquecimento)
+  qsa('.nav-btn').forEach(btn=> btn.classList.toggle('active', btn.dataset.tab === TAB));
+  showOnly(TAB);                // mostra só a aba atual
+  // pré-carrega as duas listas (sem re-render desnecessário)
   await Promise.allSettled([loadBancas(), loadPagamentos()]);
-  render();
+  // renderiza só a aba atual para evitar “duas piscadas”
+  if (TAB==='bancas') renderBancas(); else renderPagamentos();
   setupAutoDeleteTimers();
 });
