@@ -1,14 +1,15 @@
 /* =========================================
-   Depósito PIX – front (HTML/CSS intactos)
-   - Cria modal de QR por JS
-   - Chama backend Efi (cob/status)
-   - Ao confirmar: salva em localStorage (bancas) e NÃO redireciona
+   Depósito PIX – front
+   - Cria modal do QR por JS
+   - Chama backend Efi (/api/pix/cob e /api/pix/status/:txid)
+   - Ao confirmar: tenta salvar no servidor (universal);
+     se não houver endpoint público, cai para localStorage.
    ========================================= */
 
-// Usa o mesmo domínio/origem (Render/produção)
+// Usa o mesmo domínio da página (Render/produção)
 const API = window.location.origin;
 
-// ===== Seletores do seu HTML =====
+// ===== Seletores =====
 const cpfInput    = document.querySelector('#cpf');
 const nomeInput   = document.querySelector('#nome');
 const tipoSelect  = document.querySelector('#tipoChave');
@@ -28,22 +29,55 @@ const rValor   = document.querySelector('#r-valor');
 
 // ===== Utils =====
 document.querySelector('#ano') && (document.querySelector('#ano').textContent = new Date().getFullYear());
+
 function notify(msg, isError=false, time=3200){
-  if(!toast) return alert(msg);
+  if(!toast) { alert(msg); return; }
   toast.textContent = msg;
   toast.style.borderColor = isError ? 'rgba(255,92,122,.45)' : 'rgba(0,209,143,.45)';
   toast.classList.add('show');
   setTimeout(()=>toast.classList.remove('show'), time);
 }
-function centsToBRL(c){ return (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 
-// Salva no formato que a área lê: [{id,nome,depositoCents,pixType,pixKey,createdAt}]
-function addToBancas({ nome, valorCentavos, tipo, chave }){
+function centsToBRL(c){ return (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function toCentsMasked(str){ return Number((str||'').replace(/\D/g,'')||0); }
+function getMeta(name){
+  const el = document.querySelector(`meta[name="${name}"]`);
+  return el ? el.content : '';
+}
+
+// ===== Persistência =====
+// 1) Salva no servidor (universal) se existir endpoint público e app-key
+async function saveOnServer({ nome, valorCentavos, tipo, chave }){
+  // meta opcional: <meta name="app-key" content="SUA_CHAVE">
+  const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
+  const res = await fetch(`${API}/api/public/bancas`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(APP_KEY ? {'X-APP-KEY': APP_KEY} : {})
+    },
+    body: JSON.stringify({
+      nome,
+      depositoCents: valorCentavos,
+      pixType:  tipo,
+      pixKey:   chave
+    })
+  });
+  if(!res.ok){
+    // 404 ou 401/403/500 -> não existe ou não autorizado → deixa subir erro
+    const txt = await res.text().catch(()=> '');
+    throw new Error(`Falha ao salvar no servidor (${res.status}) ${txt}`);
+  }
+  return res.json().catch(()=> ({}));
+}
+
+// 2) Fallback: salva no localStorage (visível só neste navegador)
+function saveLocal({ nome, valorCentavos, tipo, chave }){
   const registro = {
     id: Date.now().toString(),
     nome,
     depositoCents: valorCentavos,
-    pixType: tipo,        // 'cpf' | 'aleatoria' | 'telefone' | 'email'
+    pixType: tipo,
     pixKey:  chave,
     createdAt: new Date().toISOString()
   };
@@ -61,6 +95,7 @@ cpfInput.addEventListener('input', () => {
   cpfInput.value = v;
   rCpf.textContent = v || '—';
 });
+
 nomeInput.addEventListener('input', () => rNome.textContent = nomeInput.value.trim() || '—');
 
 tipoSelect.addEventListener('change', () => {
@@ -126,7 +161,7 @@ form.addEventListener('submit', async (e) => {
     else if (tipo === 'telefone') chaveOk = v.replace(/\D/g,'').length === 11;
     else                          chaveOk = v.length >= 10; // aleatória
   }
-  const valorCentavos = Number((valorInput.value.replace(/\D/g,'')) || 0);
+  const valorCentavos = toCentsMasked(valorInput.value);
   const valorOk       = valorCentavos >= 1000; // R$10,00
 
   showError('#cpfError',  cpfOk);
@@ -139,7 +174,6 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  // Monta dados e chama o fluxo de cobrança PIX
   const dados = {
     nome:  nomeInput.value.trim(),
     cpf:   cpfInput.value,
@@ -157,7 +191,7 @@ function ensurePixStyles(){
     const link = document.createElement('link');
     link.id = 'pixCss';
     link.rel = 'stylesheet';
-    link.href = 'assets/css/pix.css'; // deixe o pix.css na pasta
+    link.href = 'assets/css/pix.css';
     document.head.appendChild(link);
   }
 }
@@ -212,7 +246,6 @@ function ensurePixModal(){
   close.className = 'pix-close btn-outline';
   close.textContent = 'Fechar';
 
-  // montar
   qrWrap.appendChild(img);
   code.appendChild(emv);
   code.appendChild(copy);
@@ -221,14 +254,13 @@ function ensurePixModal(){
   dlg.appendChild(card);
   document.body.appendChild(dlg);
 
-  // comportamento
   dlg.addEventListener('cancel', (e)=>{ e.preventDefault(); dlg.close(); });
   dlg.addEventListener('click', (e)=>{ if(e.target === dlg) dlg.close(); });
   copy.onclick = async ()=> {
     const emvEl = dlg.querySelector('#pixEmv');
     if (!emvEl.value) return;
     await navigator.clipboard.writeText(emvEl.value);
-    if (typeof notify === 'function') notify('Código copia e cola copiado!');
+    notify('Código copia e cola copiado!');
   };
   close.onclick = ()=> dlg.close();
 
@@ -268,18 +300,28 @@ async function criarCobrancaPIX(dados){
       if (s.status === 'CONCLUIDA') {
         st.textContent = 'Pagamento confirmado! ✅';
 
-        // >>> SALVA NA ÁREA (bancas) — sem redirecionar
-        addToBancas({
-          nome: dados.nome,
-          valorCentavos: dados.valorCentavos,
-          tipo: dados.tipo,
-          chave: dados.chave
-        });
+        // Tenta salvar UNIVERSAL no servidor…
+        try{
+          await saveOnServer({
+            nome: dados.nome,
+            valorCentavos: dados.valorCentavos,
+            tipo: dados.tipo,
+            chave: dados.chave
+          });
+        }catch(_e){
+          // …se não houver endpoint público, salva localmente
+          saveLocal({
+            nome: dados.nome,
+            valorCentavos: dados.valorCentavos,
+            tipo: dados.tipo,
+            chave: dados.chave
+          });
+        }
 
         // fecha modal e avisa
         setTimeout(()=>{
           dlg.close();
-          notify('Pagamento confirmado! Seus dados já estão na Área.', false, 4500);
+          notify('Pagamento confirmado! Registro salvo.', false, 4500);
         }, 900);
 
         return true;

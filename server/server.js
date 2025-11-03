@@ -1,5 +1,7 @@
+// server/server.js
 import 'dotenv/config';
 import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
@@ -18,9 +20,9 @@ import QRCode from 'qrcode';
    .env necessários (Render/produção):
    ---------------------------------------------------------
    NODE_ENV=production
-   PORT=10000                       # Render injeta, pode omitir
+   PORT=10000                        # Render injeta, pode omitir
    ORIGIN=https://seu-app.onrender.com
-   STATIC_ROOT=..                   # (padrão) raiz do projeto, pai de /server
+   STATIC_ROOT=..                    # (padrão) raiz do projeto (pai de /server)
 
    ADMIN_USER=admin
    ADMIN_PASSWORD_HASH=<hash_bcrypt>
@@ -33,6 +35,9 @@ import QRCode from 'qrcode';
    EFI_OAUTH_URL=https://pix-h.api.efipay.com.br/oauth/token
    EFI_CERT_PATH=/etc/secrets/client-cert.pem
    EFI_KEY_PATH=/etc/secrets/client-key.pem
+
+   # Persistência por arquivo (Render Disk)
+   DATA_DIR=/var/data                # ex.: se você criar um Disk
    ========================================================= */
 
 const {
@@ -48,23 +53,24 @@ const {
   EFI_KEY_PATH,
   EFI_BASE_URL,
   EFI_OAUTH_URL,
-  EFI_PIX_KEY
+  EFI_PIX_KEY,
+  DATA_DIR
 } = process.env;
 
 const PROD = process.env.NODE_ENV === 'production';
 
-// valida env do login
+// ===== valida env do login =====
 ['ADMIN_USER','ADMIN_PASSWORD_HASH','JWT_SECRET'].forEach(k=>{
   if(!process.env[k]) { console.error(`❌ Falta ${k} no .env (login)`); process.exit(1); }
 });
-// valida env do Efi
+// ===== valida env do Efi =====
 ['EFI_CLIENT_ID','EFI_CLIENT_SECRET','EFI_CERT_PATH','EFI_KEY_PATH','EFI_PIX_KEY','EFI_BASE_URL','EFI_OAUTH_URL']
   .forEach(k => { if(!process.env[k]) { console.error(`❌ Falta ${k} no .env (Efi)`); process.exit(1); } });
 
-// paths
+// ===== paths =====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
-const ROOT       = path.resolve(__dirname, STATIC_ROOT || '..'); // raiz do site (onde ficam index.html, area.html, assets/)
+const ROOT       = path.resolve(__dirname, STATIC_ROOT || '..'); // raiz do site (index.html, area.html, assets/)
 
 // ===== HTTPS agent APENAS para chamadas ao Efi =====
 const httpsAgent = new https.Agent({
@@ -86,23 +92,40 @@ async function getAccessToken() {
   return resp.data.access_token;
 }
 
+// ===== Persistência simples (arquivo JSON) =====
+const DATA_DIR_FINAL  = DATA_DIR || path.join(__dirname, 'data');
+const DATA_FILE       = path.join(DATA_DIR_FINAL, 'db.json');
+
+async function ensureData(){
+  try { await fsp.mkdir(DATA_DIR_FINAL, { recursive: true }); } catch {}
+  try { await fsp.access(DATA_FILE); }
+  catch { await fsp.writeFile(DATA_FILE, JSON.stringify({ bancas: [], pagamentos: [] }, null, 2)); }
+}
+async function readDB(){
+  await ensureData();
+  const raw = await fsp.readFile(DATA_FILE, 'utf8');
+  return JSON.parse(raw || '{"bancas":[],"pagamentos":[]}');
+}
+async function writeDB(db){
+  await ensureData();
+  await fsp.writeFile(DATA_FILE, JSON.stringify(db, null, 2));
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
 // ===== app base =====
 const app = express();
 
-// Render/Proxies: necessário para cookies secure e sameSite funcionarem
+// Proxies (Render) — cookies secure/samesite corretos
 app.set('trust proxy', 1);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  // CSP opcional – se usar, mantenha JS SEM inline.
-  // contentSecurityPolicy: { directives: { ... } }
 }));
-
 app.use(express.json());
 app.use(cookieParser());
 
-// Se o front for servido por ESTE MESMO servidor (recomendado), CORS nem seria necessário.
-// Mantive para o caso de você consumir /api de outro domínio:
+// Se o front for servido por este mesmo servidor, CORS é pouco usado.
+// Mantido para cenários multi-domínio:
 app.use(cors({
   origin: ORIGIN,
   credentials: true
@@ -128,23 +151,17 @@ function verifySession(token) {
 function randomHex(n=32){ return crypto.randomBytes(n).toString('hex'); }
 
 function setAuthCookies(res, token) {
-  const isProd = process.env.NODE_ENV === 'production';
   const common = {
     sameSite: 'strict',
-    secure: isProd,            // 🔒 em prod: true
-    maxAge: 2 * 60 * 60 * 1000 // 2h
+    secure: PROD,               // 🔒 em produção: true
+    maxAge: 2 * 60 * 60 * 1000, // 2h
+    path: '/'
   };
   res.cookie('session', token, { ...common, httpOnly: true });
   res.cookie('csrf',    randomHex(16), { ...common, httpOnly: false });
 }
-
-
 function clearAuthCookies(res){
-  const common = {
-    sameSite: PROD ? 'lax' : 'strict',
-    secure: PROD,
-    path: '/'
-  };
+  const common = { sameSite: 'strict', secure: PROD, path: '/' };
   res.clearCookie('session', { ...common, httpOnly:true });
   res.clearCookie('csrf',    { ...common });
 }
@@ -181,9 +198,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   return res.json({ ok: true });
 });
 
-app.post('/api/auth/logout', requireAuth, (req, res) => {
-  res.clearCookie('session', { httpOnly:true, sameSite:'strict', secure:isProd });
-  res.clearCookie('csrf',    { sameSite:'strict', secure:isProd });
+app.post('/api/auth/logout', (req, res) => {
+  clearAuthCookies(res);
   return res.json({ ok:true });
 });
 
@@ -205,7 +221,7 @@ app.get('/area.html', (req, res) => {
 app.get('/health', (req, res) => {
   try {
     fs.accessSync(EFI_CERT_PATH); fs.accessSync(EFI_KEY_PATH);
-    return res.json({ ok:true, cert:EFI_CERT_PATH, key:EFI_KEY_PATH });
+    return res.json({ ok:true, cert:EFI_CERT_PATH, key:EFI_KEY_PATH, dataDir: DATA_DIR_FINAL });
   } catch {
     return res.status(500).json({ ok:false, msg:'Cert/Key não encontrados' });
   }
@@ -272,9 +288,102 @@ app.get('/api/pix/status/:txid', async (req, res) => {
   }
 });
 
+// ====== MIDDLEWARE: todas as rotas da Área exigem login ======
+const areaAuth = [requireAuth];
+
+// ====== BANCAS ======
+app.get('/api/bancas', areaAuth, async (req, res) => {
+  const db = await readDB();
+  const list = [...db.bancas].sort((a,b) => (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
+  res.json(list);
+});
+
+app.post('/api/bancas', areaAuth, async (req, res) => {
+  const { nome, depositoCents, pixType=null, pixKey=null } = req.body || {};
+  if (!nome || typeof depositoCents !== 'number' || depositoCents <= 0) {
+    return res.status(400).json({ error: 'dados_invalidos' });
+  }
+  const db = await readDB();
+  const item = { id: uid(), nome, depositoCents, pixType, pixKey, createdAt: new Date().toISOString() };
+  db.bancas.push(item);
+  await writeDB(db);
+  res.json(item);
+});
+
+app.patch('/api/bancas/:id', areaAuth, async (req, res) => {
+  const { bancaCents } = req.body || {};
+  const db = await readDB();
+  const item = db.bancas.find(x => x.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'not_found' });
+  if (typeof bancaCents === 'number' && bancaCents >= 0) item.bancaCents = bancaCents;
+  await writeDB(db);
+  res.json(item);
+});
+
+app.post('/api/bancas/:id/to-pagamento', areaAuth, async (req, res) => {
+  const db = await readDB();
+  const ix = db.bancas.findIndex(x => x.id === req.params.id);
+  if (ix < 0) return res.status(404).json({ error: 'not_found' });
+  const b = db.bancas[ix];
+  db.bancas.splice(ix,1);
+
+  const valor = (typeof b.bancaCents === 'number' && b.bancaCents>0) ? b.bancaCents : b.depositoCents;
+
+  db.pagamentos.push({
+    id: b.id,
+    nome: b.nome,
+    pagamentoCents: valor,
+    pixType: b.pixType || null,
+    pixKey:  b.pixKey  || null,
+    status: 'nao_pago',
+    createdAt: b.createdAt
+  });
+
+  await writeDB(db);
+  res.json({ ok:true });
+});
+
+app.delete('/api/bancas/:id', areaAuth, async (req, res) => {
+  const db = await readDB();
+  const before = db.bancas.length;
+  db.bancas = db.bancas.filter(x => x.id !== req.params.id);
+  if (db.bancas.length === before) return res.status(404).json({ error: 'not_found' });
+  await writeDB(db);
+  res.json({ ok:true });
+});
+
+// ====== PAGAMENTOS ======
+app.get('/api/pagamentos', areaAuth, async (req, res) => {
+  const db = await readDB();
+  const list = [...db.pagamentos].sort((a,b) => (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
+  res.json(list);
+});
+
+app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
+  const { status } = req.body || {}; // 'pago' | 'nao_pago'
+  if (!['pago','nao_pago'].includes(status)) return res.status(400).json({ error: 'status_invalido' });
+  const db = await readDB();
+  const p = db.pagamentos.find(x => x.id === req.params.id);
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  p.status = status;
+  p.paidAt = (status === 'pago') ? new Date().toISOString() : undefined;
+  await writeDB(db);
+  res.json(p);
+});
+
+app.delete('/api/pagamentos/:id', areaAuth, async (req, res) => {
+  const db = await readDB();
+  const before = db.pagamentos.length;
+  db.pagamentos = db.pagamentos.filter(x => x.id !== req.params.id);
+  if (db.pagamentos.length === before) return res.status(404).json({ error: 'not_found' });
+  await writeDB(db);
+  res.json({ ok:true });
+});
+
 // ===== start =====
 app.listen(PORT, () => {
   console.log(`✅ Server rodando em ${ORIGIN} (NODE_ENV=${process.env.NODE_ENV||'dev'})`);
   console.log(`🗂  Servindo estáticos de: ${ROOT}`);
+  console.log(`💾 DATA_DIR: ${DATA_DIR_FINAL}`);
   console.log(`🔒 /area.html protegido por sessão; login em /login.html`);
 });

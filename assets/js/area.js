@@ -1,32 +1,64 @@
 /* =========================================
-   area.js — Bancas & Pagamentos (localStorage)
+   area.js — Bancas & Pagamentos (via API)
    - Bancas: Nome | Depósito | Banca(editável) | Ações
    - Pagamentos: Nome | Pagamento | Ações (Fazer PIX, Pago/Não pago, Excluir)
    - Menu de status flutuante (fora do scroll)
+   - Auto-exclusão de "pago" após 3 minutos (robusto a reload)
    ========================================= */
 
-const K_BANCAS = 'bancas';
-const K_PAGS   = 'pagamentos';
+/* ========== Utils base ========== */
+const API = ''; // mesmo domínio
+const qs  = (s, r=document) => r.querySelector(s);
+const qsa = (s, r=document) => [...r.querySelectorAll(s)];
 
-// ---------- helpers ----------
-const read  = (k, def='[]') => JSON.parse(localStorage.getItem(k) || def);
-const write = (k, v)        => localStorage.setItem(k, JSON.stringify(v));
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([$?*|{}\]\\^])/g, '\\$1') + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+async function apiFetch(path, opts={}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers||{}) };
+  // Envia CSRF em métodos que alteram estado
+  if (['POST','PUT','PATCH','DELETE'].includes((opts.method||'GET').toUpperCase())) {
+    const csrf = getCookie('csrf');
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
+  const res = await fetch(`${API}${path}`, { credentials:'include', ...opts, headers });
+  if (!res.ok) {
+    let err;
+    try { err = await res.json(); } catch {}
+    throw new Error(err?.error || `HTTP ${res.status}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
 const fmtBRL  = (c)=> (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const toCents = (s)=> { const d = (s||'').toString().replace(/\D/g,''); return d ? parseInt(d,10) : 0; };
 const esc     = (s='') => s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
-// ---------- elementos ----------
-const tabBancasEl     = document.querySelector('#tab-bancas');
-const tabPagamentosEl = document.querySelector('#tab-pagamentos');
-const tbodyBancas     = document.querySelector('#tblBancas tbody');
-const tbodyPags       = document.querySelector('#tblPagamentos tbody');
-const buscaInput      = document.querySelector('#busca');
+/* ========== Elementos ========== */
+const tabBancasEl     = qs('#tab-bancas');
+const tabPagamentosEl = qs('#tab-pagamentos');
+const tbodyBancas     = qs('#tblBancas tbody');
+const tbodyPags       = qs('#tblPagamentos tbody');
+const buscaInput      = qs('#busca');
 
 let TAB = localStorage.getItem('area_tab') || 'bancas';
+const STATE = {
+  bancas: [],
+  pagamentos: [],
+  timers: new Map(), // id => timeoutId (auto-delete pagos)
+};
 
-// =========================================
-// RENDER
-// =========================================
+/* ========== Carregamento ========== */
+async function loadBancas() {
+  STATE.bancas = await apiFetch('/api/bancas');
+}
+async function loadPagamentos() {
+  STATE.pagamentos = await apiFetch('/api/pagamentos');
+}
+
+/* ========== Render ========== */
 function render(){
   if (TAB==='bancas'){
     tabBancasEl.classList.add('show');
@@ -40,7 +72,7 @@ function render(){
 }
 
 function renderBancas(){
-  const lista = read(K_BANCAS).sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
+  const lista = [...STATE.bancas].sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
 
   tbodyBancas.innerHTML = lista.length ? lista.map(b => {
     const bancaTxt = typeof b.bancaCents === 'number' ? fmtBRL(b.bancaCents) : '';
@@ -64,7 +96,7 @@ function renderBancas(){
 }
 
 function renderPagamentos(){
-  const lista = read(K_PAGS).sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
+  const lista = [...STATE.pagamentos].sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
 
   tbodyPags.innerHTML = lista.length ? lista.map(p => {
     const isPago = p.status === 'pago';
@@ -95,112 +127,102 @@ function renderPagamentos(){
   filtrarTabela(tbodyPags, buscaInput?.value || '');
 }
 
-// =========================================
-/* AÇÕES PRINCIPAIS */
-// =========================================
-function setTab(tab){
+/* ========== AÇÕES PRINCIPAIS (API) ========== */
+async function setTab(tab){
   TAB = tab;
   localStorage.setItem('area_tab', tab);
-  document.querySelectorAll('.nav-btn').forEach(btn=>{
+  qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
+  await refresh(); // carrega listas atualizadas ao trocar de aba
+}
+
+async function refresh(){
+  if (TAB==='bancas'){
+    await loadBancas();
+  } else {
+    await loadPagamentos();
+  }
   render();
 }
 
-function toPagamento(id){
-  const bancas = read(K_BANCAS);
-  const ix = bancas.findIndex(x=>x.id===id);
-  if(ix<0) return;
-  const b = bancas[ix];
-
-  // valor que vai para pagamentos: bancaCents (se informado) senão depósito
-  const valor = (typeof b.bancaCents === 'number' && b.bancaCents > 0) ? b.bancaCents : (b.depositoCents||0);
-
-  bancas.splice(ix,1);
-  write(K_BANCAS, bancas);
-
-  const pags = read(K_PAGS);
-  pags.push({
-    id: b.id,
-    nome: b.nome,
-    pagamentoCents: valor,
-    pixType: b.pixType || null,
-    pixKey:  b.pixKey  || null,
-    status: 'nao_pago',
-    createdAt: b.createdAt
-  });
-  write(K_PAGS, pags);
-
-  setTab('pagamentos'); // mostra a aba de pagamentos logo após mover
+async function toPagamento(id){
+  await apiFetch(`/api/bancas/${encodeURIComponent(id)}/to-pagamento`, { method:'POST' });
+  TAB = 'pagamentos';
+  localStorage.setItem('area_tab', TAB);
+  await Promise.all([loadBancas(), loadPagamentos()]);
+  render();
+  setupAutoDeleteTimers(); // reprograma timers para pagos existentes
 }
 
-function deleteBanca(id){
-  write(K_BANCAS, read(K_BANCAS).filter(x=>x.id!==id));
+async function deleteBanca(id){
+  await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, { method:'DELETE' });
+  await loadBancas();
   render();
 }
-function deletePagamento(id){
-  write(K_PAGS, read(K_PAGS).filter(x=>x.id!==id));
+
+async function deletePagamento(id){
+  await apiFetch(`/api/pagamentos/${encodeURIComponent(id)}`, { method:'DELETE' });
+  await loadPagamentos();
   render();
+  // cancela timer, se existir
+  const t = STATE.timers.get(id);
+  if (t){ clearTimeout(t); STATE.timers.delete(id); }
 }
-function setStatus(id, value){
-  const pags = read(K_PAGS);
-  const p = pags.find(x=>x.id===id);
-  if(!p) return;
+
+async function setStatus(id, value){
+  const body = JSON.stringify({ status: value });
+  const itemBefore = STATE.pagamentos.find(x=>x.id===id);
+  await apiFetch(`/api/pagamentos/${encodeURIComponent(id)}`, { method:'PATCH', body });
+
+  await loadPagamentos();
+  render();
+
+  const item = STATE.pagamentos.find(x=>x.id===id);
+  if (!item) return;
 
   if (value === 'pago') {
-    p.status = 'pago';
-    p.paidAt = Date.now();              // marca quando virou pago
-    // agenda exclusão em 3 minutos
-    scheduleAutoDelete(id, 3 * 60 * 1000);
+    // agenda auto delete em 3 minutos (considerando paidAt do servidor)
+    scheduleAutoDelete(item);
   } else {
-    p.status = 'nao_pago';
-    delete p.paidAt;                    // cancela relógio caso volte a "não pago"
+    // cancelar timer se tinha
+    const t = STATE.timers.get(id);
+    if (t){ clearTimeout(t); STATE.timers.delete(id); }
   }
-
-  write(K_PAGS, pags);
-  render();
 }
 
-function scheduleAutoDelete(id, ms){
-  // Se a aba recarregar, faremos limpeza no DOMContentLoaded (ver abaixo)
-  setTimeout(()=>{
-    const list = read(K_PAGS);
-    const item = list.find(x=>x.id===id);
-    if (!item) return;                  // já foi apagado
-    if (item.status !== 'pago') return; // só remove se ainda estiver pago
-    const age = Date.now() - (item.paidAt || 0);
-    if (age >= 3*60*1000) {             // 3 minutos
-      write(K_PAGS, list.filter(x=>x.id!==id));
-      render();
-    }
-  }, ms);
+/* ========== Auto delete de "pago" em 3 minutos ========== */
+function scheduleAutoDelete(item){
+  const { id, paidAt } = item;
+  if (!paidAt) return;
+  const left = (new Date(paidAt).getTime() + 3*60*1000) - Date.now();
+  // cancela anterior, se houver
+  const prev = STATE.timers.get(id);
+  if (prev) clearTimeout(prev);
+  if (left <= 0) {
+    // já passou: deleta agora
+    deletePagamento(id).catch(()=>{});
+    return;
+  }
+  const tid = setTimeout(()=> deletePagamento(id).catch(()=>{}), left);
+  STATE.timers.set(id, tid);
 }
 
-// limpeza ao carregar a página (remove pagos antigos, caso o relógio tenha passado off-line)
-function cleanupPaidOlderThan3Min(){
-  const list = read(K_PAGS);
-  const now = Date.now();
-  const kept = list.filter(x => !(x.status==='pago' && x.paidAt && (now - x.paidAt >= 3*60*1000)));
-  if (kept.length !== list.length){
-    write(K_PAGS, kept);
-  }
-  // re-agenda os que faltam (se ainda não passaram 3 min)
-  kept.forEach(x=>{
-    if (x.status==='pago' && x.paidAt){
-      const left = (x.paidAt + 3*60*1000) - now;
-      if (left > 0) scheduleAutoDelete(x.id, left);
-    }
+function setupAutoDeleteTimers(){
+  // limpa timers antigos
+  STATE.timers.forEach(t=> clearTimeout(t));
+  STATE.timers.clear();
+
+  STATE.pagamentos.forEach(p=>{
+    if (p.status === 'pago' && p.paidAt) scheduleAutoDelete(p);
   });
 }
 
-
-// =========================================
-// Modal simples “Fazer PIX” (mostra a chave)
-// =========================================
+/* ========== Modal simples “Fazer PIX” ========== */
 function abrirPixModal(id){
-  const p = read(K_PAGS).find(x=>x.id===id);
+  const p = STATE.pagamentos.find(x=>x.id===id);
   if(!p) return;
-  let dlg = document.querySelector('#payModal');
+  let dlg = qs('#payModal');
   if(!dlg){
     dlg = document.createElement('dialog');
     dlg.id = 'payModal';
@@ -236,15 +258,13 @@ function abrirPixModal(id){
       }
     });
   }
-  dlg.querySelector('[data-field="nome"]').textContent = p.nome;
-  dlg.querySelector('[data-field="tipo"]').textContent = (p.pixType||'—').toUpperCase();
-  dlg.querySelector('[data-field="key"]').value = p.pixKey || '—';
+  qs('[data-field="nome"]', dlg).textContent = p.nome;
+  qs('[data-field="tipo"]', dlg).textContent = (p.pixType||'—').toUpperCase();
+  qs('[data-field="key"]',  dlg).value      = p.pixKey || '—';
   dlg.showModal();
 }
 
-// =========================================
-// MENU FLUTUANTE (PORTAL) — Pago / Não pago
-// =========================================
+/* ========== MENU FLUTUANTE (PORTAL) — Pago / Não pago ========== */
 let statusMenuEl = null;
 let statusMenuId = null;
 
@@ -262,7 +282,7 @@ function ensureStatusMenu(){
     const btn = e.target.closest('button.status-item');
     if(!btn) return;
     if(statusMenuId){
-      setStatus(statusMenuId, btn.dataset.value); // salva + rerender
+      setStatus(statusMenuId, btn.dataset.value).catch(console.error);
     }
     hideStatusMenu();
   });
@@ -276,7 +296,7 @@ function showStatusMenu(anchorBtn, id, current){
   statusMenuId = id;
 
   // marca a atual
-  [...m.querySelectorAll('.status-item')].forEach(b=>{
+  qsa('.status-item', m).forEach(b=>{
     b.classList.toggle('active', b.dataset.value === current);
   });
 
@@ -326,12 +346,10 @@ document.addEventListener('click', (e)=>{
 ['scroll','resize'].forEach(ev=>{
   window.addEventListener(ev, hideStatusMenu, {passive:true});
 });
-document.querySelectorAll('.table-wrap').forEach(w=> w.addEventListener('scroll', hideStatusMenu, {passive:true}));
+qsa('.table-wrap').forEach(w=> w.addEventListener('scroll', hideStatusMenu, {passive:true}));
 
-// =========================================
-// EVENTOS GLOBAIS
-// =========================================
-document.querySelectorAll('.nav-btn').forEach(btn=>{
+/* ========== EVENTOS GLOBAIS ========== */
+qsa('.nav-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> setTab(btn.dataset.tab));
 });
 
@@ -340,10 +358,10 @@ document.addEventListener('click', (e)=>{
   if(!btn) return;
 
   const {action, id} = btn.dataset;
-  if(action==='to-pagamento') return toPagamento(id);
-  if(action==='del-banca')    return deleteBanca(id);
+  if(action==='to-pagamento') return toPagamento(id).catch(console.error);
+  if(action==='del-banca')    return deleteBanca(id).catch(console.error);
   if(action==='fazer-pix')    return abrirPixModal(id);
-  if(action==='del-pag')      return deletePagamento(id);
+  if(action==='del-pag')      return deletePagamento(id).catch(console.error);
 });
 
 // edição da Banca (R$)
@@ -356,20 +374,24 @@ document.addEventListener('input', (e)=>{
   if(v.length<3) v = v.padStart(3,'0');
   inp.value = fmtBRL(parseInt(v,10));
 });
-document.addEventListener('blur', (e)=>{
+
+// salvar PATCH ao sair do campo
+document.addEventListener('blur', async (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
   const id = inp.dataset.id;
   const cents = toCents(inp.value);
-  const list = read(K_BANCAS);
-  const item = list.find(x=>x.id===id);
-  if(item){ item.bancaCents = cents; write(K_BANCAS, list); }
+  try{
+    await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, {
+      method:'PATCH',
+      body: JSON.stringify({ bancaCents: cents })
+    });
+    await loadBancas();
+    render();
+  }catch(err){
+    console.error(err);
+  }
 }, true);
-document.addEventListener('keydown', (e)=>{
-  const inp = e.target.closest('input[data-role="banca"]');
-  if(!inp) return;
-  if(e.key==='Enter'){ e.preventDefault(); inp.blur(); }
-});
 
 // busca
 function filtrarTabela(tbody, q){
@@ -385,12 +407,13 @@ buscaInput?.addEventListener('input', ()=>{
   else                filtrarTabela(tbodyPags,   q);
 });
 
-// start
-document.addEventListener('DOMContentLoaded', ()=>{
-  document.querySelectorAll('.nav-btn').forEach(btn=>{
+/* ========== start ========== */
+document.addEventListener('DOMContentLoaded', async ()=>{
+  qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === TAB);
   });
-  cleanupPaidOlderThan3Min(); // <-- NOVO
+  // carrega as duas listas para já preparar timers de "pago"
+  await Promise.all([loadBancas(), loadPagamentos()]);
+  setupAutoDeleteTimers();
   render();
 });
-
