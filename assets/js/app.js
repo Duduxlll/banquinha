@@ -18,6 +18,7 @@ const chaveInput  = document.querySelector('#chavePix');
 const valorInput  = document.querySelector('#valor');
 const form        = document.querySelector('#depositoForm');
 const toast       = document.querySelector('#toast');
+const btnSubmit   = document.querySelector('#btnDepositar');
 
 // Resumo
 const rCpf     = document.querySelector('#r-cpf');
@@ -37,6 +38,7 @@ function notify(msg, isError=false, time=3200){
   toast.classList.add('show');
   setTimeout(()=>toast.classList.remove('show'), time);
 }
+
 function centsToBRL(c){ return (c/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
 function toCentsMasked(str){ return Number((str||'').replace(/\D/g,'')||0); }
 function getMeta(name){
@@ -45,9 +47,9 @@ function getMeta(name){
 }
 
 /* ===== Persistência ===== */
-// Salva no servidor (rota pública) se houver APP_PUBLIC_KEY
+// Salva no servidor (rota pública) se houver APP_PUBLIC_KEY (meta ou global)
 async function saveOnServer({ nome, valorCentavos, tipo, chave }){
-  const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
+  const APP_KEY = (window.APP_PUBLIC_KEY && String(window.APP_PUBLIC_KEY)) || getMeta('app-key') || '';
   const res = await fetch(`${API}/api/public/bancas`, {
     method: 'POST',
     headers: {
@@ -93,6 +95,7 @@ cpfInput.addEventListener('input', () => {
   cpfInput.value = v;
   rCpf.textContent = v || '—';
 });
+
 nomeInput.addEventListener('input', () => rNome.textContent = nomeInput.value.trim() || '—');
 
 tipoSelect.addEventListener('change', () => {
@@ -275,7 +278,15 @@ form.addEventListener('submit', async (e) => {
     valorCentavos
   };
 
+  // dica: se não houver APP_PUBLIC_KEY no front, avisa (evita confusão)
+  const hasAppKey = !!(window.APP_PUBLIC_KEY || getMeta('app-key'));
+  if(!hasAppKey){
+    console.warn('APP_PUBLIC_KEY ausente no front (meta[name="app-key"] ou window.APP_PUBLIC_KEY). A rota pública pode recusar.');
+  }
+
   try{
+    btnSubmit && (btnSubmit.disabled = true);
+
     // 1) criar a cobrança
     const { txid, emv, qrPng } = await criarCobrancaPIX({
       nome: dados.nome, cpf: dados.cpf, valorCentavos: dados.valorCentavos
@@ -339,5 +350,7 @@ form.addEventListener('submit', async (e) => {
   }catch(e){
     console.error(e);
     notify('Não foi possível iniciar o PIX. Tente novamente.', true);
+  }finally{
+    btnSubmit && (btnSubmit.disabled = false);
   }
 });
