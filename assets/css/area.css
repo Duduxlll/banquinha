@@ -1,4 +1,5 @@
- :root{
+:root{
+  --bg:#0b1020;
   --card:#111835;
   --card-2:#0f1530;
   --line:rgba(255,255,255,.08);
@@ -52,7 +53,7 @@ body{
 .nav-btn{
   width:100%; text-align:left; padding:12px 14px; border-radius:12px;
   background:var(--card); color:var(--text); border:1px solid var(--line);
-  cursor:pointer; transition:transform .06s ease, filter .2s ease;
+  cursor:pointer; transition:transform .06s ease, filter .2s ease, box-shadow .2s ease;
 }
 .nav-btn:hover{filter:brightness(1.06)}
 .nav-btn.active{
@@ -60,12 +61,24 @@ body{
   border-color: rgba(110,140,255,.35);
   box-shadow: inset 0 0 0 1px rgba(110,140,255,.22);
 }
+/* micro-efeito na ativa */
+.nav-btn{ position: relative; overflow: hidden; }
+.nav-btn.active::after{
+  content:"";
+  position:absolute; left:0; right:0; bottom:-1px; height:2px;
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: ink .32s ease forwards;
+}
+@keyframes ink{ to { transform: scaleX(1); } }
 
-.content{align-self:start}
+.content{align-self:start; position: relative;}
 .bar{display:flex; justify-content:flex-end; margin:0 0 12px}
 .input{
   width:100%; padding:12px 14px; border-radius:12px; background:#0e1327;
   border:1px solid var(--line); color:var(--text); outline:none;
+  transition: border-color .2s, box-shadow .2s, transform .06s ease;
 }
 .input:focus{border-color: rgba(110,140,255,.5); box-shadow:0 0 0 4px rgba(110,140,255,.18)}
 
@@ -80,6 +93,7 @@ body{
 .table thead th{
   text-align:left; padding:14px; color:#cbd3ff; font-weight:700; background: rgba(255,255,255,.02);
   border-bottom:1px solid var(--line);
+  transition: box-shadow .24s ease, background-color .24s ease;
 }
 .table tbody td{
   padding:14px; border-bottom:1px solid rgba(255,255,255,.06);
@@ -96,7 +110,7 @@ body{
   display:inline-flex; align-items:center; justify-content:center;
   padding:10px 12px; border-radius:10px; font-weight:700; letter-spacing:.2px;
   border:1px solid var(--line); background:transparent; color:var(--text);
-  cursor:pointer; transition:transform .06s ease, filter .2s ease;
+  cursor:pointer; transition:transform .06s ease, filter .2s ease, box-shadow .2s ease;
 }
 .btn:active{transform:translateY(1px)}
 
@@ -105,28 +119,14 @@ body{
   color:#061024; border:none;
   box-shadow: 0 12px 30px rgba(110,140,255,.25), 0 8px 20px rgba(43,180,255,.18);
 }
+.btn--primary:hover{ box-shadow: 0 10px 26px rgba(110,140,255,.18); }
+
 .btn--ghost{
   background:rgba(255,255,255,.02);
   border-color:rgba(255,255,255,.18);
 }
 
-/* Status cores */
-.ok{ color: var(--ok); font-weight:700 }
-.warn{ color: var(--warn); font-weight:700 }
-
-/* ---------- ABAS ---------- */
-.tab{display:none}
-.tab.show{display:block}
-
-/* TOAST */
-.toast{
-  position:fixed; right:16px; bottom:16px; background:#0e1327; border:1px solid var(--line);
-  padding:14px 16px; border-radius:12px; display:none
-}
-.toast.show{display:block}
-
-
-/* === NOVO: botões danger (vermelho) === */
+/* NOVO: botões danger (vermelho) */
 .btn--danger{
   background: rgba(255,92,122,.08);
   border-color: rgba(255,92,122,.35);
@@ -134,12 +134,85 @@ body{
 }
 .btn--danger:hover{ filter: brightness(1.05); }
 
-/* === NOVO: dropdown de status (Pago/Não pago) === */
+/* Status cores */
+.ok{ color: var(--ok); font-weight:700 }
+.warn{ color: var(--warn); font-weight:700 }
+
+/* ---------- ABAS (transição suave) ---------- */
+/* A content já está position:relative acima */
+.tab{
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(8px) scale(.995);
+  pointer-events: none;
+  transition: opacity .24s ease, transform .24s ease, filter .24s ease;
+  filter: saturate(.92);
+}
+.tab.show{
+  position: relative;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  filter: none;
+}
+/* leve fade ao entrar conteúdo da tabela */
+.table-wrap{ animation: tabFadeIn .28s ease both; }
+@keyframes tabFadeIn{
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== TABELA COM CABEÇALHO FIXO ===== */
+.table-wrap{
+  max-height: 460px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+.table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(11, 16, 39, 0.82);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+}
+.table tbody tr{ position: relative; }
+.table tbody td{ position: relative; }
+
+/* ===== DROPDOWN (select) SEM FICAR ESCONDIDO ===== */
+.status-select{
+  position: relative;
+  z-index: 10;
+  transform: translateZ(0);
+}
+.table-wrap, .card, .content, .layout { z-index: 0; position: relative; }
+
+/* Dropdown abre pra cima quando faltar espaço */
+.status-menu.dropup{
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+/* mantém o menu sempre acima de outros elementos */
+.status-menu{ z-index: 9999; }
+
+/* melhora clique/stacking do botão */
+.status-btn{ position: relative; z-index: 10; }
+
+/* evita que o menu seja “cortado” visualmente por sombras internas */
+.table tbody tr, .table tbody td { overflow: visible; }
+
+/* ---------- STATUS (menu e botão) ---------- */
 .status{ position: relative; display: inline-block; }
 .status-btn{
   display:inline-flex; align-items:center; gap:8px;
   padding:10px 12px; border-radius:10px; font-weight:700;
   cursor:pointer; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.02); color:var(--text);
+  transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
 }
 .status-btn .caret{
   width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:6px solid currentColor;
@@ -162,60 +235,8 @@ body{
 .status-opt.status--pago{ color: var(--ok); }
 .status-opt.status--nao{ color: #ff9aa6; }
 
-/* opcional: deixa a coluna “Ações” sem quebrar layout */
+/* opcional: coluna “Ações” sem quebrar layout */
 .col-acoes{ width:1%; white-space:nowrap; }
-
-/* ===== TABELA COM CABEÇALHO FIXO ===== */
-.table-wrap{
-  /* define uma altura e torna a área rolável APENAS nas linhas */
-  max-height: 460px;          /* ajuste se quiser mais/menos altura */
-  overflow: auto;
-  overscroll-behavior: contain;
-  position: relative;
-}
-
-/* cabeçalho gruda no topo do container rolável */
-.table thead th{
-  position: sticky;
-  top: 0;
-  z-index: 5;                 /* fica acima das linhas */
-  background: rgba(11, 16, 39, 0.82); /* fundo sólido/translúcido para não “vazar” */
-  backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--line);
-}
-
-/* linhas/células com contexto próprio (evita recorte visual) */
-.table tbody tr{ position: relative; }
-.table tbody td{ position: relative; }
-
-/* ===== DROPDOWN (select) SEM FICAR ESCONDIDO ===== */
-/* dá prioridade de camada ao select e evita que seja recortado por sombras/stacking */
-.status-select{
-  position: relative;
-  z-index: 10;        /* sobe o select acima da tabela */
-  transform: translateZ(0); /* cria contexto de composição (ajuda no Chrome) */
-}
-
-/* opcional: se quiser o menu de opções ainda “acima de tudo” em alguns navegadores */
-.table-wrap, .card, .content, .layout { z-index: 0; position: relative; }
-
-
-/* Dropdown abre pra cima quando faltar espaço */
-.status-menu.dropup{
-  top: auto;
-  bottom: 100%;
-  margin-top: 0;
-  margin-bottom: 6px;
-}
-
-/* mantém o menu sempre acima de outros elementos */
-.status-menu{ z-index: 9999; }
-
-/* melhora clique/stacking do botão */
-.status-btn{ position: relative; z-index: 10; }
-
-/* evita que o menu seja “cortado” visualmente por sombras internas */
-.table tbody tr, .table tbody td { overflow: visible; }
 
 /* ===== Menu flutuante (fora da tabela) ===== */
 .status-float{
@@ -226,7 +247,7 @@ body{
   border:1px solid rgba(255,255,255,.12);
   border-radius:10px;
   box-shadow: var(--shadow);
-  z-index: 99999;             /* acima de tudo */
+  z-index: 99999;
   overflow: hidden;
   min-width: 160px;
 }
@@ -251,23 +272,68 @@ body{
 /* melhora o botão que abre o menu */
 .status-btn{ position: relative; z-index: 1; }
 
-
-/* ===== Modal: fundo escuro e blur (mais visível) ===== */
-#payModal::backdrop{
-  background: rgba(8, 12, 26, .65);        /* escurece a página atrás */
-  backdrop-filter: blur(6px) saturate(.9);  /* leve blur no fundo */
+/* ===== TOAST ===== */
+.toast{
+  position:fixed; right:16px; bottom:16px; background:#0e1327; border:1px solid var(--line);
+  padding:14px 16px; border-radius:12px; display:none
 }
+.toast.show{display:block}
 
-/* pequena animação de entrada */
+/* ===== MODAL (pay) ===== */
+#payModal::backdrop{
+  background: rgba(8, 12, 26, .65);
+  backdrop-filter: blur(6px) saturate(.9);
+}
 @keyframes payModalIn {
   from { transform: translateY(6px); opacity: 0; }
   to   { transform: translateY(0);  opacity: 1; }
 }
 #payModal[open]{ animation: payModalIn .16s ease-out; }
-
-/* reforça o cartão do modal (sobrepõe os estilos inline) */
 #payModal > div{
   background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.05)) !important;
   border: 1px solid rgba(255,255,255,.22) !important;
   box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.04) !important;
+}
+
+/* ===== ACESSIBILIDADE: reduzir movimento ===== */
+@media (prefers-reduced-motion: reduce){
+  .tab, .table-wrap, #payModal[open], .nav-btn.active::after{
+    animation:none !important;
+    transition:none !important;
+  }
+}
+
+/* === Ajuste de cantos do cabeçalho da tabela === */
+
+/* garanta que o container corte os cantos */
+.card .table-wrap{
+  overflow: hidden;                 /* corta o que passar dos cantos */
+  border-top-left-radius: 16px;     /* igual ao cartão */
+  border-top-right-radius: 16px;
+}
+
+/* o cabeçalho “sticky” precisa herdar o raio */
+.table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(11,16,39,.82);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  background-clip: padding-box;     /* evita “vazar” no raio */
+}
+
+/* aplica o raio apenas nos extremos do cabeçalho */
+.table thead th:first-child{
+  border-top-left-radius: 16px;
+}
+.table thead th:last-child{
+  border-top-right-radius: 16px;
+}
+
+/* remove qualquer “respiro” lateral que crie fenda */
+.table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;                /* sem espaçamento entre células */
 }
