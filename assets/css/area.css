@@ -303,36 +303,37 @@ body{
   }
 }
 
-/* ==== FIX: alinhamento fino de cabeçalhos e colunas ==== */
+/* === Ajuste de cantos do cabeçalho da tabela === */
 
-/* Nome (1ª coluna) bem alinhado à esquerda nas duas tabelas */
-.table thead th:first-child,
-.table tbody td:first-child{
-  text-align: left;
-  padding-left: 14px;  /* mesmo padding das células */
+/* garanta que o container corte os cantos */
+.card .table-wrap{
+  overflow: hidden;                 /* corta o que passar dos cantos */
+  border-top-left-radius: 16px;     /* igual ao cartão */
+  border-top-right-radius: 16px;
 }
 
-/* Ações (última coluna) alinhado à direita — cabeçalho e linhas */
-.table thead th:last-child,
-.table tbody td:last-child{
-  text-align: right;
+/* o cabeçalho “sticky” precisa herdar o raio */
+.table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(11,16,39,.82);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  background-clip: padding-box;     /* evita “vazar” no raio */
 }
 
-/* Se você usa a classe .col-acoes no TH também, reforça o alinhamento */
-.table thead th.col-acoes,
-.table tbody td.col-acoes{
-  text-align: right;
-  white-space: nowrap;
+/* aplica o raio apenas nos extremos do cabeçalho */
+.table thead th:first-child{
+  border-top-left-radius: 16px;
+}
+.table thead th:last-child{
+  border-top-right-radius: 16px;
 }
 
-/* Evita “pulo” do cabeçalho sticky quando surge a barra de rolagem */
-.table-wrap{
-  scrollbar-gutter: stable both-edges;
-}
-
-/* Ajuste sutil de altura/vertical-align pra caber tudo sem cortar */
-.table thead th,
-.table tbody td{
-  vertical-align: middle;
-  line-height: 1.35;
+/* remove qualquer “respiro” lateral que crie fenda */
+.table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;                /* sem espaçamento entre células */
 }
