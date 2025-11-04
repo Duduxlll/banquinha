@@ -1,5 +1,7 @@
-  /* =========================================
+/* =========================================
    area.js — Bancas & Pagamentos (via API)
+   - Atualização ao vivo com SSE (Server-Sent Events)
+   - NÃO muda de aba ao mover para pagamentos
    - Bancas: Nome | Depósito | Banca(editável) | Ações
    - Pagamentos: Nome | Pagamento | Ações (Fazer PIX, Pago/Não pago, Excluir)
    - Menu de status flutuante (fora do scroll)
@@ -7,7 +9,7 @@
    ========================================= */
 
 /* ========== Utils base ========== */
-const API = window.location.origin; // mesmo domínio
+const API = window.location.origin; // mesma origem
 const qs  = (s, r=document) => r.querySelector(s);
 const qsa = (s, r=document) => [...r.querySelectorAll(s)];
 
@@ -36,6 +38,15 @@ const fmtBRL  = (c)=> (c/100).toLocaleString('pt-BR',{style:'currency',currency:
 const toCents = (s)=> { const d = (s||'').toString().replace(/\D/g,''); return d ? parseInt(d,10) : 0; };
 const esc     = (s='') => s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
+/* debounce simples p/ evitar excesso de refresh */
+function debounce(fn, wait = 300){
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), wait);
+  };
+}
+
 /* ========== Elementos ========== */
 const tabBancasEl     = qs('#tab-bancas');
 const tabPagamentosEl = qs('#tab-pagamentos');
@@ -61,7 +72,6 @@ async function loadPagamentos() {
   STATE.pagamentos = list.sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
   return STATE.pagamentos;
 }
-
 
 /* ========== Render ========== */
 async function render(){
@@ -169,14 +179,11 @@ async function toPagamento(id){
   // 2) Agora move para pagamentos
   await apiFetch(`/api/bancas/${encodeURIComponent(id)}/to-pagamento`, { method:'POST' });
 
-  // 3) Recarrega as listas e re-renderiza
-  TAB = 'pagamentos';
-  localStorage.setItem('area_tab', TAB);
+  // 3) NÃO muda de aba — recarrega silenciosamente as listas
   await Promise.all([loadBancas(), loadPagamentos()]);
   render();
   setupAutoDeleteTimers();
 }
-
 
 async function deleteBanca(id){
   await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, { method:'DELETE' });
@@ -428,13 +435,50 @@ buscaInput?.addEventListener('input', ()=>{
   else                filtrarTabela(tbodyPags,   q);
 });
 
+/* ========== SSE (ao vivo) ========== */
+let es = null;
+
+function startStream(){
+  if (es) try { es.close(); } catch {}
+  // mesma origem; cookies inclusos
+  es = new EventSource(`${API}/api/stream`, { withCredentials: true });
+
+  const softRefreshBancas = debounce(async () => {
+    // Atualiza sempre a lista correspondente; mantém aba atual
+    await loadBancas();
+    if (TAB === 'bancas') {
+      render();
+    }
+  }, 200);
+
+  const softRefreshPags = debounce(async () => {
+    await loadPagamentos();
+    if (TAB === 'pagamentos') {
+      render();
+      setupAutoDeleteTimers();
+    }
+  }, 200);
+
+  es.addEventListener('bancas-changed', softRefreshBancas);
+  es.addEventListener('pagamentos-changed', softRefreshPags);
+  es.addEventListener('ping', () => {}); // keepalive
+
+  es.onerror = () => {
+    try { es.close(); } catch {}
+    setTimeout(startStream, 3000); // backoff simples
+  };
+}
+
 /* ========== start ========== */
 document.addEventListener('DOMContentLoaded', async ()=>{
   qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === TAB);
   });
-  // carrega as duas listas para já preparar timers de "pago"
+  // carrega as duas listas inicialmente para já preparar timers de "pago"
   await Promise.all([loadBancas(), loadPagamentos()]);
   setupAutoDeleteTimers();
   render();
+
+  // liga o “ao vivo”
+  startStream();
 });
