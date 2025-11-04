@@ -235,3 +235,53 @@ html, body, .table-wrap { scrollbar-gutter: stable both-edges; }
 .tab.tab-view.show { opacity: 1; transform: translateY(0); }
 
 .tab.tab-view.hiding{ opacity:0; transform: translateY(6px); }
+
+
+/* ===== Abas com transição simples (sem row-anim, sem skeleton) ===== */
+.tab { display:none; }
+.tab.show {
+  display:block;
+  opacity:1;
+  transform:none;
+}
+.tab.tab-view {
+  opacity:0;
+  transform: translateY(6px);
+  transition: opacity .18s ease, transform .18s ease;
+  will-change: opacity, transform;
+}
+.tab.tab-view.show {
+  opacity:1;
+  transform: translateY(0);
+}
+
+/* REMOVA qualquer bloco de “MICRO-ANIMAÇÃO NAS LINHAS” e qualquer .skel-* do CSS */
+
+/* ===== Cabeçalho da tabela cobrindo de fora a fora ===== */
+.card { overflow: hidden; }                   /* garante cantos perfeitos */
+.table { border-collapse: separate; border-spacing:0; }
+.table-wrap{
+  max-height: 460px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+  scrollbar-gutter: stable both-edges;        /* evita “salto” do layout */
+}
+
+/* O fundo azul escuro agora vai no THEAD inteiro, não nos TH isolados */
+.table thead{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #0d1330;                        /* azul do header */
+}
+.table thead th{
+  background: transparent;                    /* sem fundo por célula */
+  text-align:left; padding:14px; color:#cbd3ff; font-weight:700;
+  border-bottom:1px solid var(--line);
+}
+/* sem borda arredondada por célula — o .card já faz o “clip” certinho */
+
+/* mesma largura/comportamento para a coluna de Ações */
+.table thead th.col-acoes,
+.table tbody td.col-acoes { white-space: nowrap; width: 1%; }

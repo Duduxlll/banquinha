@@ -120,25 +120,32 @@ function showOnly(tab){
 }
 async function setTab(tab){
   if (TAB === tab) return;
+
   TAB = tab;
   localStorage.setItem('area_tab', tab);
-  qsa('.nav-btn').forEach(btn=>{
+  qsa('.nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
 
-  // alterna visuais primeiro (animação de CSS cuida do resto)
-  showOnly(tab);
+  // aplica efeito suave só no container da aba (CSS .tab-view)
+  tabBancasEl.classList.add('tab-view');
+  tabPagamentosEl.classList.add('tab-view');
 
-  try{
-    if (tab === 'bancas'){
-      await loadBancas();        // carrega
-      renderBancas();            // renderiza SOMENTE a aba atual
-    } else {
-      await loadPagamentos();
-      renderPagamentos();
-    }
-  }catch(e){ console.error(e); }
+  // mostra a aba destino primeiro (sem re-render ainda)
+  tabBancasEl.classList.toggle('show', tab === 'bancas');
+  tabPagamentosEl.classList.toggle('show', tab === 'pagamentos');
+
+  // carrega SOMENTE a lista da aba selecionada
+  if (tab === 'bancas') {
+    await loadBancas();
+  } else {
+    await loadPagamentos();
+  }
+
+  // renderiza uma única vez (evita “duas piscadas”)
+  render();
 }
+
 
 async function refresh(){
   if (TAB==='bancas'){ await loadBancas(); renderBancas(); }
