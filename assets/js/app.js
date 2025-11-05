@@ -1,13 +1,15 @@
-/* ========================================= 
-   Depósito PIX – front (produção)
-   - Prioriza LivePix (redirect); fallback para QR (Efi)
-   - NUNCA manda a chave PIX ao LivePix (só nome + valor)
-   - Chave (tipo+valor) vai em 'meta' para o seu servidor
+/* =========================================
+   app.js — Depósito PIX (produção)
+   - Prioriza LivePix (redirect no navegador)
+   - Fallback: QR/EMV (quando o back devolver emv/qrPng)
+   - NUNCA envia a chave PIX ao LivePix; ela vai no 'meta' do servidor
+   - Compatível com o HTML que possui: #cpf, #nome, #tipoChave, #chavePix, #valor
    ========================================= */
 
 const API = window.location.origin;
 
 /* ===== Seletores ===== */
+const cpfInput    = document.querySelector('#cpf');
 const nomeInput   = document.querySelector('#nome');
 const tipoSelect  = document.querySelector('#tipoChave');
 const chaveWrap   = document.querySelector('#chaveWrapper');
@@ -18,16 +20,17 @@ const toast       = document.querySelector('#toast');
 const btnSubmit   = document.querySelector('#btnDepositar');
 
 // Resumo
+const rCpf     = document.querySelector('#r-cpf');
 const rNome    = document.querySelector('#r-nome');
 const rTipo    = document.querySelector('#r-tipo');
-const rChaveLi = document.querySelector('#r-chave-li') || document.querySelector('#resumo li:nth-child(3)');
+const rChaveLi = document.querySelector('#r-chave-li');
 const rChave   = document.querySelector('#r-chave');
 const rValor   = document.querySelector('#r-valor');
 
 /* ===== Utils ===== */
 document.querySelector('#ano') && (document.querySelector('#ano').textContent = new Date().getFullYear());
 
-function notify(msg, isError=false, time=3200){
+function notify(msg, isError=false, time=3600){
   if(!toast){ alert(msg); return; }
   toast.textContent = msg;
   toast.style.borderColor = isError ? 'rgba(255,92,122,.45)' : 'rgba(0,209,143,.45)';
@@ -42,6 +45,15 @@ function getMeta(name){
 }
 
 /* ===== Máscaras & Resumo ===== */
+cpfInput?.addEventListener('input', () => {
+  let v = (cpfInput.value||'').replace(/\D/g,'').slice(0,11);
+  v = v.replace(/(\d{3})(\d)/,'$1.$2')
+       .replace(/(\d{3})(\d)/,'$1.$2')
+       .replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+  cpfInput.value = v;
+  rCpf && (rCpf.textContent = v || '—');
+});
+
 nomeInput?.addEventListener('input', () => rNome && (rNome.textContent = nomeInput.value.trim() || '—'));
 
 function maskCPF(raw){
@@ -61,26 +73,23 @@ function maskPhone(raw){
 function updateTipoUI(){
   if (!tipoSelect) return;
   const t = tipoSelect.value;
-  // Sempre mostra o campo da chave e o item do resumo
-  if (chaveWrap) chaveWrap.style.display = '';
-  if (rChaveLi)  rChaveLi.style.display  = '';
-  if (rTipo)     rTipo.textContent = t === 'aleatoria' ? 'Chave aleatória' : (t.charAt(0).toUpperCase()+t.slice(1));
-
-  if (!chaveInput) return;
+  rTipo && (rTipo.textContent = t === 'aleatoria' ? 'Chave aleatória' : (t.charAt(0).toUpperCase()+t.slice(1)));
 
   if (t === 'cpf'){
-    chaveInput.placeholder = '000.000.000-00';
-    chaveInput.value = maskCPF(chaveInput.value);
-  } else if (t === 'telefone'){
-    chaveInput.placeholder = '(00) 90000-0000';
-    chaveInput.value = maskPhone(chaveInput.value);
-  } else if (t === 'email'){
-    chaveInput.placeholder = 'seu@email.com';
-  } else {
-    // aleatória
-    chaveInput.placeholder = 'Ex.: 2e1a-…';
+    // Quando for CPF, a "chave" é o próprio CPF digitado no campo #cpf
+    chaveWrap && (chaveWrap.style.display = 'none');
+    rChaveLi && (rChaveLi.style.display = 'none');
+    rChave && (rChave.textContent = '—');
+  }else{
+    chaveWrap && (chaveWrap.style.display = '');
+    rChaveLi && (rChaveLi.style.display = '');
+    if (chaveInput) {
+      chaveInput.placeholder = t === 'telefone' ? '(00) 90000-0000'
+                         : t === 'email' ? 'seu@email.com'
+                         : 'Ex.: 2e1a-…';
+    }
+    rChave && (rChave.textContent = (chaveInput?.value || '—').trim());
   }
-  rChave && (rChave.textContent = (chaveInput.value || '—').trim());
 }
 tipoSelect?.addEventListener('change', updateTipoUI);
 updateTipoUI();
@@ -88,15 +97,11 @@ updateTipoUI();
 chaveInput?.addEventListener('input', () => {
   if (!tipoSelect) return;
   const t = tipoSelect.value;
-  if (t === 'cpf'){
-    chaveInput.value = maskCPF(chaveInput.value);
-  } else if (t === 'telefone'){
-    chaveInput.value = maskPhone(chaveInput.value);
-  }
+  if (t === 'telefone') chaveInput.value = maskPhone(chaveInput.value);
   rChave && (rChave.textContent = chaveInput.value.trim() || '—');
 });
 
-// Valor com máscara R$
+// Valor
 valorInput?.addEventListener('input', () => {
   let v = valorInput.value.replace(/\D/g,'');
   if(!v){ rValor && (rValor.textContent='—'); valorInput.value=''; return; }
@@ -120,7 +125,7 @@ function isCPFValid(cpf){
 function isEmail(v){ return /.+@.+\..+/.test(v); }
 function showError(sel, ok){ const el = document.querySelector(sel); ok ? el.classList.remove('show') : el.classList.add('show'); }
 
-/* ===== Modal de QR (fallback Efi) ===== */
+/* ===== Modal de QR (fallback) ===== */
 function ensurePixStyles(){
   if (!document.getElementById('pixCss')) {
     const link = document.createElement('link');
@@ -171,46 +176,36 @@ function ensurePixModal(){
   return dlg;
 }
 
-/* ===== Chamadas ao backend ===== */
+/* ===== Chamadas ao backend =====
+   Nota: alinhado com o server.js que expõe /api/pix/cob (LivePix-first)
+================================== */
 
-// 1) Tenta LivePix primeiro
-async function criarPagamentoLivePix({ nome, valorCentavos, tipo, chave }){
+async function criarPagamento({ nome, valorCentavos, tipo, chave, cpf }) {
   const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
-  const resp = await fetch(`${API}/api/livepix/create`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const resp = await fetch(`${API}/api/pix/cob`, {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
       ...(APP_KEY ? { 'X-APP-KEY': APP_KEY } : {})
     },
-    // Mandamos só NOME e VALOR para LivePix; 'meta' fica no seu servidor
     body: JSON.stringify({
       nome,
       valorCentavos,
-      meta: { pixType: tipo, pixKey: chave } // usado só pelo seu back/Área
+      // servidor usará META (tipo/chave) quando LivePix; e usará cpf quando fallback Efi
+      tipo,
+      chave,
+      cpf
     })
   });
-  if (resp.status === 404) return { notAvailable: true }; // servidor sem LivePix
+
   if (!resp.ok) {
-    let msg = 'Falha ao criar pagamento (LivePix)';
+    let msg = 'Falha ao iniciar pagamento';
     try { const j = await resp.json(); if (j?.error) msg = j.error; } catch {}
     throw new Error(msg);
   }
-  return resp.json(); // esperado: { redirectUrl } 
-}
-
-// 2) Fallback para Efi (QR) se LivePix indisponível
-async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
-  const resp = await fetch(`${API}/api/pix/cob`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ nome, cpf, valorCentavos })
-  });
-  if(!resp.ok){
-    let err = 'Falha ao criar PIX';
-    try{ const j = await resp.json(); if(j.error) err = j.error; }catch{}
-    throw new Error(err);
-  }
-  // Pode vir { token, emv, qrPng } OU { txid, emv, qrPng }
+  // Resposta esperada:
+  // - LivePix: { token, redirectUrl }
+  // - Efi:     { token|txid, emv, qrPng }
   return resp.json();
 }
 
@@ -218,63 +213,60 @@ async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
 form?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const tipo  = tipoSelect.value;
-  const chave = (chaveInput?.value || '').trim();
+  const tipo = tipoSelect.value;
+  const nome = nomeInput.value.trim();
+  const chave = (tipo === 'cpf') ? (cpfInput?.value || '') : (chaveInput?.value || '').trim();
 
-  // Validações por tipo
+  // validações
+  const nomeOk = nome.length > 2;
+
   let chaveOk = true;
   if (tipo === 'cpf')            chaveOk = isCPFValid(chave);
   else if (tipo === 'email')     chaveOk = isEmail(chave);
   else if (tipo === 'telefone')  chaveOk = chave.replace(/\D/g,'').length === 11;
   else                           chaveOk = chave.length >= 10; // aleatória
 
-  const nomeOk  = nomeInput.value.trim().length > 2;
   const valorCentavos = toCentsMasked(valorInput.value);
-  const valorOk       = valorCentavos >= 1000; // R$10,00
+  const valorOk = valorCentavos >= 1000;
 
+  // mostrar erros
+  showError('#cpfError',  tipo === 'cpf' ? chaveOk : true);
   showError('#nomeError', nomeOk);
-  showError('#chaveError',chaveOk);
-  showError('#valorError',valorOk);
+  showError('#chaveError', tipo === 'cpf' ? true : chaveOk);
+  showError('#valorError', valorOk);
 
-  if (!(nomeOk && chaveOk && valorOk)){
+  if (!(nomeOk && chaveOk && valorOk)) {
     notify('Por favor, corrija os campos destacados.', true);
     return;
   }
 
-  try{
+  try {
     btnSubmit && (btnSubmit.disabled = true);
 
-    // ===== 1) Tenta LivePix (redirect) =====
-    const live = await criarPagamentoLivePix({
-      nome: nomeInput.value.trim(),
+    // 1) Cria pagamento no servidor
+    const res = await criarPagamento({
+      nome,
       valorCentavos,
       tipo,
-      chave // NÃO será enviado ao LivePix; apenas fica no 'meta' do seu back
+      chave,
+      cpf: (tipo === 'cpf') ? chave : '' // só envia CPF real quando a chave é CPF (útil no fallback Efi)
     });
 
-    if (live?.redirectUrl){
-      // Redireciona para a página do LivePix (onde o usuário escreve a mensagem)
-      window.location.href = live.redirectUrl;
+    // 2) Se vier redirectUrl (LivePix) => redireciona
+    if (res.redirectUrl) {
+      window.location.href = res.redirectUrl;
       return;
     }
 
-    // ===== 2) Fallback: Efi (QR modal + polling) =====
-    if (live?.notAvailable){
-      const cpfParaEfi = (tipo === 'cpf') ? chave : '';
-      const cob = await criarCobrancaPIX({
-        nome: nomeInput.value.trim(),
-        cpf: cpfParaEfi,
-        valorCentavos
-      });
-      const tokenOrTxid = cob.token || cob.txid;
-      const { emv, qrPng } = cob;
-
+    // 3) Se vier QR (fallback Efi) => mostra modal + polling
+    const tokenOrTxid = res.token || res.txid;
+    if (res.emv || res.qrPng) {
       const dlg = ensurePixModal();
       const img = dlg.querySelector('#pixQr');
       const emvEl = dlg.querySelector('#pixEmv');
       const st = dlg.querySelector('#pixStatus');
-      img.src = qrPng;
-      emvEl.value = emv;
+      if (res.qrPng) img.src = res.qrPng;
+      if (res.emv) emvEl.value = res.emv;
       st.textContent = 'Aguardando pagamento…';
       if(typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open','');
 
@@ -291,29 +283,7 @@ form?.addEventListener('submit', async (e) => {
           if (ok) {
             clearInterval(timer);
             st.textContent = 'Pagamento confirmado! ✅';
-
-            // Confirma no servidor (salva na Área) — universal (token ou txid aceitos)
-            const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
-            await fetch(`${API}/api/pix/confirmar`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(APP_KEY ? { 'X-APP-KEY': APP_KEY } : {})
-              },
-              body: JSON.stringify({
-                token: tokenOrTxid,
-                txid: tokenOrTxid,
-                nome: nomeInput.value.trim(),
-                valorCentavos,
-                tipo,
-                chave
-              })
-            }).catch(()=>{ /* se falhar, a Área ainda deve refletir via SSE depois */ });
-
-            setTimeout(()=>{
-              dlg.close();
-              notify('Pagamento confirmado! Registro salvo.', false, 4500);
-            }, 900);
+            setTimeout(()=>{ dlg.close(); notify('Pagamento confirmado! Registro salvo.', false, 4500); }, 900);
           } else if (tries <= 0) {
             clearInterval(timer);
             st.textContent = 'Tempo esgotado. Se já pagou, a confirmação aparecerá na Área.';
@@ -322,11 +292,16 @@ form?.addEventListener('submit', async (e) => {
           console.error(loopErr);
         }
       }, 5000);
+
+      return;
     }
 
-  }catch(e){
+    // 4) Resposta inesperada
+    notify('Pagamento iniciado, mas sem dados de redirecionamento/QR.', true);
+
+  } catch (e) {
     console.error(e);
-    notify('Não foi possível iniciar o pagamento. Tente novamente.', true);
+    notify(e.message || 'Não foi possível iniciar o pagamento.', true);
   } finally {
     btnSubmit && (btnSubmit.disabled = false);
   }
