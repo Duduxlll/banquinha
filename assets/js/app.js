@@ -1,8 +1,8 @@
 /* ========================================= 
    Depósito PIX – front (produção)
-   - Usa TOKEN opaco (nada de txid no F12)
+   - Usa TOKEN opaco se o backend retornar; senão usa TXID
    - Cria modal do QR por JS
-   - Chama backend Efi (/api/pix/cob e /api/pix/status/:token)
+   - Chama backend Efi (/api/pix/cob e /api/pix/status/:token|:txid)
    - Ao confirmar: registra no servidor (/api/pix/confirmar)
      e cai para localStorage se o servidor rejeitar
    ========================================= */
@@ -10,7 +10,6 @@
 const API = window.location.origin;
 
 /* ===== Seletores ===== */
-const cpfInput    = document.querySelector('#cpf');
 const nomeInput   = document.querySelector('#nome');
 const tipoSelect  = document.querySelector('#tipoChave');
 const chaveWrap   = document.querySelector('#chaveWrapper');
@@ -20,11 +19,10 @@ const form        = document.querySelector('#depositoForm');
 const toast       = document.querySelector('#toast');
 const btnSubmit   = document.querySelector('#btnDepositar');
 
-// Resumo
-const rCpf     = document.querySelector('#r-cpf');
+// Resumo (sem r-cpf)
 const rNome    = document.querySelector('#r-nome');
 const rTipo    = document.querySelector('#r-tipo');
-const rChaveLi = document.querySelector('#r-chave-li');
+const rChaveLi = document.querySelector('#r-chave-li') || document.querySelector('#resumo li:nth-child(3)');
 const rChave   = document.querySelector('#r-chave');
 const rValor   = document.querySelector('#r-valor');
 
@@ -46,16 +44,17 @@ function getMeta(name){
 }
 
 /* ===== Persistência ===== */
-// Salva UNIVERSAL no servidor validando (rota pública segura via TOKEN)
-async function saveOnServerConfirmado({ token, nome, valorCentavos, tipo, chave }){
+// Salva UNIVERSAL no servidor validando (rota pública segura via TOKEN ou TXID)
+async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, chave }){
   const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
+  // corpo aceita 'token' OU 'txid' — mandamos os dois; o servidor usa o que entender
   const res = await fetch(`${API}/api/pix/confirmar`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(APP_KEY ? { 'X-APP-KEY': APP_KEY } : {})
     },
-    body: JSON.stringify({ token, nome, valorCentavos, tipo, chave })
+    body: JSON.stringify({ token: tokenOrTxid, txid: tokenOrTxid, nome, valorCentavos, tipo, chave })
   });
   if (!res.ok) {
     let msg = `Falha ao confirmar (${res.status})`;
@@ -81,51 +80,70 @@ function saveLocal({ nome, valorCentavos, tipo, chave }){
 }
 
 /* ===== Máscaras & Resumo ===== */
-cpfInput?.addEventListener('input', () => {
-  let v = cpfInput.value.replace(/\D/g,'').slice(0,11);
+
+// Nome > Resumo
+nomeInput?.addEventListener('input', () => rNome && (rNome.textContent = nomeInput.value.trim() || '—'));
+
+// Alterna campo da chave conforme o tipo
+function updateTipoUI(){
+  if (!tipoSelect) return;
+  const t = tipoSelect.value;
+  // Sempre mostra o campo da chave (inclusive para CPF)
+  if (chaveWrap) chaveWrap.style.display = '';
+  if (rChaveLi)  rChaveLi.style.display  = '';
+  if (rTipo)     rTipo.textContent = t === 'aleatoria' ? 'Chave aleatória' : (t.charAt(0).toUpperCase()+t.slice(1));
+
+  if (!chaveInput) return;
+
+  if (t === 'cpf'){
+    // CPF: placeholder e maxlength “visual”
+    chaveInput.placeholder = '000.000.000-00';
+    // limpa para evitar sujeira de formatações anteriores
+    chaveInput.value = maskCPF(chaveInput.value);
+    rChave && (rChave.textContent = chaveInput.value.trim() || '—');
+  } else if (t === 'telefone'){
+    chaveInput.placeholder = '(00) 90000-0000';
+    chaveInput.value = maskPhone(chaveInput.value);
+    rChave && (rChave.textContent = chaveInput.value.trim() || '—');
+  } else if (t === 'email'){
+    chaveInput.placeholder = 'seu@email.com';
+    rChave && (rChave.textContent = chaveInput.value.trim() || '—');
+  } else {
+    // aleatória
+    chaveInput.placeholder = 'Ex.: 2e1a-…';
+    rChave && (rChave.textContent = chaveInput.value.trim() || '—');
+  }
+}
+tipoSelect?.addEventListener('change', updateTipoUI);
+updateTipoUI();
+
+// Máscara dinâmica para o campo da chave (de acordo com o tipo)
+function maskCPF(raw){
+  let v = String(raw||'').replace(/\D/g,'').slice(0,11);
   v = v.replace(/(\d{3})(\d)/,'$1.$2')
        .replace(/(\d{3})(\d)/,'$1.$2')
        .replace(/(\d{3})(\d{1,2})$/,'$1-$2');
-  cpfInput.value = v;
-  if (rCpf) rCpf.textContent = v || '—';
-});
-
-nomeInput?.addEventListener('input', () => rNome && (rNome.textContent = nomeInput.value.trim() || '—'));
-
-tipoSelect?.addEventListener('change', () => {
-  const t = tipoSelect.value;
-  if (rTipo) rTipo.textContent = t === 'aleatoria' ? 'Chave aleatória' : (t.charAt(0).toUpperCase()+t.slice(1));
-  if (t === 'cpf'){
-    // Quando for CPF, a "chave" é o próprio CPF; esconde campo extra
-    chaveWrap && (chaveWrap.style.display = 'none');
-    rChaveLi && (rChaveLi.style.display = 'none');
-    if (chaveInput) chaveInput.value = '';
-    rChave && (rChave.textContent = '—');
-  }else{
-    chaveWrap && (chaveWrap.style.display = '');
-    rChaveLi && (rChaveLi.style.display = '');
-    if (chaveInput) {
-      chaveInput.placeholder = t === 'telefone' ? '(00) 90000-0000' : (t === 'email' ? 'seu@email.com' : 'Ex.: 2e1a-…)');
-      rChave && (rChave.textContent = (chaveInput.value || '—'));
-    }
-  }
-});
-// estado inicial do wrapper
-tipoSelect && tipoSelect.dispatchEvent(new Event('change'));
+  return v;
+}
+function maskPhone(raw){
+  let v = String(raw||'').replace(/\D/g,'').slice(0,11);
+  if(v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
+  if(v.length > 10) v = `${v.slice(0,10)}-${v.slice(10)}`;
+  return v;
+}
 
 chaveInput?.addEventListener('input', () => {
   if (!tipoSelect) return;
-  if (tipoSelect.value === 'telefone'){
-    let v = chaveInput.value.replace(/\D/g,'').slice(0,11);
-    if(v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
-    if(v.length > 10) v = `${v.slice(0,10)}-${v.slice(10)}`;
-    chaveInput.value = v;
-    rChave && (rChave.textContent = v || '—');
-  } else {
-    rChave && (rChave.textContent = chaveInput.value.trim() || '—');
+  const t = tipoSelect.value;
+  if (t === 'cpf'){
+    chaveInput.value = maskCPF(chaveInput.value);
+  } else if (t === 'telefone'){
+    chaveInput.value = maskPhone(chaveInput.value);
   }
+  rChave && (rChave.textContent = chaveInput.value.trim() || '—');
 });
 
+// Valor com máscara R$
 valorInput?.addEventListener('input', () => {
   let v = valorInput.value.replace(/\D/g,'');
   if(!v){ rValor && (rValor.textContent='—'); valorInput.value=''; return; }
@@ -230,8 +248,9 @@ function ensurePixModal(){
   return dlg;
 }
 
-/* ===== Backend Efi (com TOKEN) ===== */
+/* ===== Backend Efi (aceita token ou txid) ===== */
 async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
+  // cpf opcional aqui: só enviaremos quando tipo for 'cpf'
   const resp = await fetch(`${API}/api/pix/cob`, {
     method:'POST',
     headers:{ 'Content-Type':'application/json' },
@@ -242,7 +261,8 @@ async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
     try{ const j = await resp.json(); if(j.error) err = j.error; }catch{}
     throw new Error(err);
   }
-  return resp.json(); // { token, emv, qrPng }
+  // Pode vir { token, emv, qrPng } OU { txid, emv, qrPng }
+  return resp.json();
 }
 
 /* ===== Submit ===== */
@@ -250,47 +270,40 @@ form?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const tipo = tipoSelect.value;
-  // CPF é obrigatório somente quando tipo = cpf
-  const cpfObrigatorio = (tipo === 'cpf');
-  const cpfOk   = cpfObrigatorio ? isCPFValid(cpfInput?.value) : true;
-  const nomeOk  = nomeInput.value.trim().length > 2;
+  const chaveVal = (chaveInput?.value || '').trim();
 
-  let chaveOk   = true;
-  if (tipo !== 'cpf'){
-    const v = (chaveInput?.value || '').trim();
-    if (tipo === 'email')         chaveOk = isEmail(v);
-    else if (tipo === 'telefone') chaveOk = v.replace(/\D/g,'').length === 11;
-    else                          chaveOk = v.length >= 10; // aleatória
-  }
+  // Validações por tipo
+  let chaveOk = true;
+  if (tipo === 'cpf')        chaveOk = isCPFValid(chaveVal);
+  else if (tipo === 'email') chaveOk = isEmail(chaveVal);
+  else if (tipo === 'telefone') chaveOk = chaveVal.replace(/\D/g,'').length === 11;
+  else                        chaveOk = chaveVal.length >= 10; // aleatória
+
+  const nomeOk  = nomeInput.value.trim().length > 2;
   const valorCentavos = toCentsMasked(valorInput.value);
   const valorOk       = valorCentavos >= 1000; // R$ 10,00
 
-  showError('#cpfError',  cpfOk);
+  // Exibição de erros
   showError('#nomeError', nomeOk);
   showError('#chaveError',chaveOk);
   showError('#valorError',valorOk);
+  // Se sua página ainda tiver #cpfError, mantemos oculto
+  const cpfErr = document.querySelector('#cpfError'); cpfErr && cpfErr.classList.remove('show');
 
-  if (!(cpfOk && nomeOk && chaveOk && valorOk)){
+  if (!(nomeOk && chaveOk && valorOk)){
     notify('Por favor, corrija os campos destacados.', true);
     return;
   }
 
-  const dados = {
-    nome:  nomeInput.value.trim(),
-    cpf:   (cpfInput?.value || ''), // só será enviado para Efi se vier preenchido
-    tipo,
-    // quando for CPF, a "chave" é o próprio CPF digitado (sem depender de campo extra)
-    chave: (tipo === 'cpf' ? (cpfInput?.value || '') : (chaveInput?.value || '').trim()),
-    valorCentavos
-  };
+  const cpfParaEfi = (tipo === 'cpf') ? chaveVal : ''; // se a chave for CPF, enviamos o CPF à Efi
 
   try{
     btnSubmit && (btnSubmit.disabled = true);
 
-    // 1) criar a cobrança (volta TOKEN opaco)
-    const { token, emv, qrPng } = await criarCobrancaPIX({
-      nome: dados.nome, cpf: dados.cpf, valorCentavos: dados.valorCentavos
-    });
+    // 1) criar a cobrança
+    const cob = await criarCobrancaPIX({ nome: nomeInput.value.trim(), cpf: cpfParaEfi, valorCentavos });
+    const tokenOrTxid = cob.token || cob.txid;
+    const { emv, qrPng } = cob;
 
     // 2) abrir modal com QR
     const dlg = ensurePixModal();
@@ -302,9 +315,9 @@ form?.addEventListener('submit', async (e) => {
     st.textContent = 'Aguardando pagamento…';
     if(typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open','');
 
-    // 3) polling /api/pix/status/:token até CONCLUIDA
+    // 3) polling /api/pix/status/:tokenOrTxid até CONCLUIDA
     async function check(){
-      const s = await fetch(`${API}/api/pix/status/${encodeURIComponent(token)}`).then(r=>r.json());
+      const s = await fetch(`${API}/api/pix/status/${encodeURIComponent(tokenOrTxid)}`).then(r=>r.json());
       return s.status === 'CONCLUIDA';
     }
 
@@ -317,22 +330,22 @@ form?.addEventListener('submit', async (e) => {
           clearInterval(timer);
           st.textContent = 'Pagamento confirmado! ✅';
 
-          // 4) registra no servidor com validação via TOKEN (universal)
+          // 4) registra no servidor com validação universal
           try{
             await saveOnServerConfirmado({
-              token,
-              nome: dados.nome,
-              valorCentavos: dados.valorCentavos,
-              tipo: dados.tipo,
-              chave: dados.chave
+              tokenOrTxid,
+              nome: nomeInput.value.trim(),
+              valorCentavos,
+              tipo,
+              chave: chaveVal
             });
           }catch(_err){
             // fallback local se o servidor recusar (não recomendado para produção)
             saveLocal({
-              nome: dados.nome,
-              valorCentavos: dados.valorCentavos,
-              tipo: dados.tipo,
-              chave: dados.chave
+              nome: nomeInput.value.trim(),
+              valorCentavos,
+              tipo,
+              chave: chaveVal
             });
             notify('Servidor não confirmou o registro — salvo localmente.', true, 4200);
           }
