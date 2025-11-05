@@ -1,17 +1,14 @@
-
+<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bancas • Depósito PIX</title>
 
-  <!-- 1) Chave pública: deve ser IGUAL à APP_PUBLIC_KEY do servidor -->
+  <!-- Deve ser igual à APP_PUBLIC_KEY do servidor -->
   <meta name="app-key" content="b01c7cd2e87519f8d0e62fafc69c80f8babb54d0a9799fefdad28d4520e7d25bd39f140cb948041e5c5caa43e7d7f905">
 
-  <!-- Estilo: você pode manter inline ou separar em assets/css/style.css -->
- 
-<link rel="stylesheet" href="assets/css/style.css">
-  <!-- 2) (Opcional) já deixar o CSS do modal QR carregado -->
+  <link rel="stylesheet" href="assets/css/style.css">
   <link rel="stylesheet" href="assets/css/pix.css">
 </head>
 <body>
@@ -34,28 +31,17 @@
         <div class="banner">
           <div class="hero-shape" aria-hidden="true"></div>
         </div>
+
         <div class="card-header">
           <span class="pill">1ª etapa</span>
           <h2 id="form-title" style="margin:12px 0 0">Identificação & Chave PIX</h2>
-          <p class="subtitle" style="margin:6px 0 0">Preencha seus dados e escolha a chave PIX para receber o depósito.</p>
+          <p class="subtitle" style="margin:6px 0 0">Escolha o tipo de chave e preencha os dados para receber o depósito.</p>
         </div>
+
         <div class="card-body">
           <form id="depositoForm" novalidate>
+            <!-- Linha: Tipo de chave + Campo da chave -->
             <div class="row">
-              <div>
-                <label for="cpf">CPF</label>
-                <input class="input" type="text" inputmode="numeric" autocomplete="off" id="cpf" name="cpf" placeholder="000.000.000-00" maxlength="14" required>
-                <p class="help">Usado também como chave quando você escolher "CPF".</p>
-                <div class="error" id="cpfError">Informe um CPF válido.</div>
-              </div>
-              <div>
-                <label for="nome">Nome completo</label>
-                <input class="input" type="text" id="nome" name="nome" placeholder="Seu nome" required>
-                <div class="error" id="nomeError">Informe seu nome.</div>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top:16px">
               <div>
                 <label for="tipoChave">Tipo de chave PIX</label>
                 <select class="input" id="tipoChave" name="tipoChave" required>
@@ -64,16 +50,26 @@
                   <option value="telefone">Número de telefone</option>
                   <option value="email">E-mail</option>
                 </select>
-                <p class="help">Se escolher CPF, nenhuma outra informação é necessária.</p>
+                <p class="help">Ao selecionar <strong>CPF</strong>, digite o seu CPF (11 dígitos) no campo ao lado.</p>
               </div>
-              <div id="chaveWrapper" style="display:none">
+
+              <div id="chaveWrapper">
                 <label for="chavePix">Informe sua chave PIX</label>
+                <!-- Quando o tipo for CPF, este mesmo campo recebe o CPF (app.js fará máscara e limite de 11 dígitos) -->
                 <input class="input" type="text" id="chavePix" name="chavePix" placeholder="Cole aqui sua chave" autocomplete="off">
                 <div class="error" id="chaveError">Informe uma chave PIX válida.</div>
               </div>
             </div>
 
-            <div style="margin-top:20px">
+            <!-- Nome completo abaixo do tipo de chave -->
+            <div style="margin-top:16px">
+              <label for="nome">Nome completo</label>
+              <input class="input" type="text" id="nome" name="nome" placeholder="Seu nome" required>
+              <div class="error" id="nomeError">Informe seu nome.</div>
+            </div>
+
+            <!-- Valor -->
+            <div style="margin-top:16px">
               <label for="valor">Valor do depósito</label>
               <input class="input" type="text" id="valor" name="valor" inputmode="decimal" placeholder="R$ 10,00 (mínimo)" required>
               <div class="error" id="valorError">O valor mínimo é R$ 10,00.</div>
@@ -93,10 +89,10 @@
           <div class="card-body">
             <h3 style="margin-top:0">Resumo</h3>
             <ul class="summary-list" id="resumo">
-              <li><span class="k">CPF</span> <span id="r-cpf">—</span></li>
+              <!-- CPF foi removido do resumo: a “Chave” já cobre o caso de CPF -->
               <li><span class="k">Nome</span> <span id="r-nome">—</span></li>
               <li><span class="k">Tipo de chave</span> <span id="r-tipo">CPF</span></li>
-              <li id="r-chave-li" style="display:none"><span class="k">Chave</span> <span id="r-chave">—</span></li>
+              <li><span class="k">Chave</span> <span id="r-chave">—</span></li>
               <li><span class="k">Valor</span> <span id="r-valor">—</span></li>
             </ul>
           </div>
@@ -106,10 +102,10 @@
           <div class="card-body">
             <h3 style="margin-top:0">Como funciona</h3>
             <ol style="margin:0 0 0 18px; color:var(--muted); line-height:1.6">
-              <li>Você informa seu CPF e seu nome.</li>
-              <li>Escolhe o tipo de chave PIX (CPF, aleatória, telefone ou e-mail).</li>
-              <li>Define o valor (mínimo R$ 10,00) e clica em <strong>Fazer depósito</strong>.</li>
-              <li>O QR-Code do PIX abre e, após o pagamento <em>CONCLUÍDO</em>, o registro vai para a Área.</li>
+              <li>Escolha o <strong>tipo de chave PIX</strong> (CPF, aleatória, telefone ou e-mail).</li>
+              <li>No campo ao lado, informe a <strong>chave</strong> (se escolher <strong>CPF</strong>, digite o seu CPF).</li>
+              <li>Preencha o <strong>nome completo</strong> e o <strong>valor</strong> (mínimo R$ 10,00).</li>
+              <li>Clique em <strong>Fazer depósito</strong>. O QR-Code do PIX será gerado e, após o pagamento, o registro aparece na Área.</li>
             </ol>
           </div>
         </section>
@@ -124,7 +120,7 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <!-- 3) Usa o app.js que faz TODO o fluxo do PIX -->
+  <!-- Seu JS externo (sem script inline) -->
   <script src="assets/js/app.js"></script>
 </body>
 </html>

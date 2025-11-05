@@ -1,4 +1,4 @@
-  // server/server.js
+// server/server.js
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -115,6 +115,18 @@ function brlStrToCents(strOriginal) {
 }
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function tok(){ return 'tok_' + crypto.randomBytes(18).toString('hex'); }
+
+// ===== store em memória p/ token -> txid (TTL 15 min) =====
+/** tokenStore: token -> { txid, createdAt: ms } */
+const tokenStore = new Map();
+const TOKEN_TTL_MS = 15 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of tokenStore) {
+    if (now - v.createdAt > TOKEN_TTL_MS) tokenStore.delete(k);
+  }
+}, 60_000);
 
 // ===== app base =====
 const app = express();
@@ -269,14 +281,14 @@ app.get('/api/pix/ping', async (req, res) => {
   }
 });
 
-// ===== API PIX (Efi) =====
+// ===== API PIX (Efi) — NUNCA devolver txid para o front =====
 app.post('/api/pix/cob', async (req, res) => {
   try {
     const { nome, cpf, valorCentavos } = req.body || {};
     if (!nome || !valorCentavos || valorCentavos < 1000) {
       return res.status(400).json({ error: 'Dados inválidos (mínimo R$ 10,00)' });
     }
-    const token = await getAccessToken();
+    const access = await getAccessToken();
     const valor = (valorCentavos / 100).toFixed(2);
 
     const payload = {
@@ -290,30 +302,39 @@ app.post('/api/pix/cob', async (req, res) => {
     const { data: cob } = await axios.post(
       `${EFI_BASE_URL}/v2/cob`,
       payload,
-      { httpsAgent, headers: { Authorization: `Bearer ${token}` } }
+      { httpsAgent, headers: { Authorization: `Bearer ${access}` } }
     );
     const { txid, loc } = cob;
 
     const { data: qr } = await axios.get(
       `${EFI_BASE_URL}/v2/loc/${loc.id}/qrcode`,
-      { httpsAgent, headers: { Authorization: `Bearer ${token}` } }
+      { httpsAgent, headers: { Authorization: `Bearer ${access}` } }
     );
+
+    // Gera token opaco e associa ao txid no servidor
+    const tokenOpaque = tok();
+    tokenStore.set(tokenOpaque, { txid, createdAt: Date.now() });
 
     const emv = qr.qrcode;
     const qrPng = qr.imagemQrcode || (await QRCode.toDataURL(emv));
-    res.json({ txid, emv, qrPng });
+    // Devolve só token + QR (sem txid)
+    res.json({ token: tokenOpaque, emv, qrPng });
   } catch (err) {
     console.error('Erro /api/pix/cob:', err.response?.data || err.message);
     res.status(500).json({ error: 'Falha ao criar cobrança PIX' });
   }
 });
 
-app.get('/api/pix/status/:txid', async (req, res) => {
+// Status consultado por token opaco (mapeado para txid no back)
+app.get('/api/pix/status/:token', async (req, res) => {
   try {
-    const token = await getAccessToken();
+    const rec = tokenStore.get(req.params.token);
+    if (!rec) return res.status(404).json({ error: 'token_not_found' });
+
+    const access = await getAccessToken();
     const { data } = await axios.get(
-      `${EFI_BASE_URL}/v2/cob/${encodeURIComponent(req.params.txid)}`,
-      { httpsAgent, headers: { Authorization: `Bearer ${token}` } }
+      `${EFI_BASE_URL}/v2/cob/${encodeURIComponent(rec.txid)}`,
+      { httpsAgent, headers: { Authorization: `Bearer ${access}` } }
     );
     res.json({ status: data.status });
   } catch (err) {
@@ -323,8 +344,9 @@ app.get('/api/pix/status/:txid', async (req, res) => {
 });
 
 /* =========================================================
-   PUBLIC/SEGURO — confirmar pagamento por TXID
+   PUBLIC/SEGURO — confirmar pagamento por TOKEN (não txid)
    - Requer header X-APP-KEY igual a APP_PUBLIC_KEY
+   - Body: { token, nome, valorCentavos, tipo, chave }
    - Valida na Efi: status = "CONCLUIDA" e valor bate
    - Grava em "bancas"
    ========================================================= */
@@ -334,16 +356,19 @@ app.post('/api/pix/confirmar', async (req, res) => {
     const key = req.get('X-APP-KEY');
     if (!key || key !== APP_PUBLIC_KEY) return res.status(401).json({ error:'unauthorized' });
 
-    const { txid, nome, valorCentavos, tipo=null, chave=null } = req.body || {};
-    if (!txid || !nome || typeof valorCentavos !== 'number' || valorCentavos < 1) {
+    const { token, nome, valorCentavos, tipo=null, chave=null } = req.body || {};
+    if (!token || !nome || typeof valorCentavos !== 'number' || valorCentavos < 1) {
       return res.status(400).json({ error:'dados_invalidos' });
     }
 
-    // 1) consulta na Efi
-    const token = await getAccessToken();
+    const rec = tokenStore.get(token);
+    if (!rec) return res.status(404).json({ error:'token_not_found' });
+
+    // 1) consulta na Efi usando o txid associado ao token
+    const access = await getAccessToken();
     const { data } = await axios.get(
-      `${EFI_BASE_URL}/v2/cob/${encodeURIComponent(txid)}`,
-      { httpsAgent, headers: { Authorization: `Bearer ${token}` } }
+      `${EFI_BASE_URL}/v2/cob/${encodeURIComponent(rec.txid)}`,
+      { httpsAgent, headers: { Authorization: `Bearer ${access}` } }
     );
 
     // 2) valida status + valor
@@ -359,7 +384,7 @@ app.post('/api/pix/confirmar', async (req, res) => {
     }
 
     // 3) insere em bancas
-    const id = uid(); // pode usar o próprio txid, se preferir
+    const id = uid();
     const { rows } = await q(
       `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
        values ($1,$2,$3,$4,$5,$6, now())
@@ -372,7 +397,8 @@ app.post('/api/pix/confirmar', async (req, res) => {
       [id, nome, valorCentavos, null, tipo, chave]
     );
 
-    // broadcast p/ quem está na Área
+    // 4) limpa token e notifica SSE
+    tokenStore.delete(token);
     sseSendAll('bancas-changed', { reason: 'insert-confirmed' });
 
     return res.json({ ok:true, ...rows[0] });
@@ -445,7 +471,7 @@ app.post('/api/bancas', areaAuth, async (req, res) => {
     `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
      values ($1,$2,$3,$4,$5,$6, now())
      returning id, nome, deposito_cents as "depositoCents", banca_cents as "bancaCents",
-               pix_type as "pixType", pix_key as "pixKey", created_at as "createdAt"`,
+               pix_type as "PixType", pix_key as "pixKey", created_at as "createdAt"`,
     [id, nome, depositoCents, null, pixType, pixKey]
   );
 
@@ -591,4 +617,3 @@ app.listen(PORT, async () => {
   console.log(`🗂  Servindo estáticos de: ${ROOT}`);
   console.log(`🔒 /area.html protegido por sessão; login em /login.html`);
 });
-    
