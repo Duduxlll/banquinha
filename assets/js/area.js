@@ -122,7 +122,7 @@ function renderPagamentos(){
             </button>
 
             <!-- NOVO: voltar para Bancas -->
-            <button class="btn btn--ghost" data-action="to-banca" data-id="${p.id}">Bancas</button>
+            <button class="btn btn--primary" data-action="to-banca" data-id="${p.id}">Bancas</button>
 
             <button class="btn btn--primary" data-action="fazer-pix" data-id="${p.id}">Fazer PIX</button>
             <button class="btn btn--danger"  data-action="del-pag"   data-id="${p.id}">Excluir</button>
