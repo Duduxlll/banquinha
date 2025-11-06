@@ -17,33 +17,6 @@ import QRCode from 'qrcode';
 import pkg from 'pg';
 const { Pool } = pkg;
 
-/* =========================================================
-   .env esperados (Render/produção)
-   ---------------------------------------------------------
-   NODE_ENV=production
-   PORT=10000
-   ORIGIN=https://seu-app.onrender.com
-   STATIC_ROOT=..             # raiz do site (pai de /server)
-
-   ADMIN_USER=admin
-   ADMIN_PASSWORD_HASH=<hash_bcrypt>
-   JWT_SECRET=<64+ chars aleatórios>
-
-   # Chave pública p/ endpoints sem sessão (front depositante):
-   APP_PUBLIC_KEY=<uma-chave-só-sua>
-
-   # Efi (PIX)
-   EFI_CLIENT_ID=...
-   EFI_CLIENT_SECRET=...
-   EFI_PIX_KEY=...
-   EFI_BASE_URL=https://pix-h.api.efipay.com.br
-   EFI_OAUTH_URL=https://pix-h.api.efipay.com.br/oauth/token
-   EFI_CERT_PATH=/etc/secrets/client-cert.pem
-   EFI_KEY_PATH=/etc/secrets/client-key.pem
-
-   # Postgres (Render)
-   DATABASE_URL=postgres://usuario:senha@host:5432/db
-   ========================================================= */
 
 const {
   PORT = 3000,
@@ -108,7 +81,7 @@ async function getAccessToken() {
 }
 
 function brlStrToCents(strOriginal) {
-  // Efi manda "10.00" como string; convertemos para cents com arredondamento
+  
   const n = Number.parseFloat(String(strOriginal).replace(',', '.'));
   if (Number.isNaN(n)) return null;
   return Math.round(n * 100);
@@ -191,9 +164,7 @@ function requireAuth(req, res, next){
   next();
 }
 
-// =========================================================
-// SSE (Server-Sent Events) — stream de eventos da Área
-// =========================================================
+
 const sseClients = new Set();
 
 function sseSendAll(event, payload = {}) {
@@ -351,13 +322,6 @@ app.get('/api/pix/status/:token', async (req, res) => {
   }
 });
 
-/* =========================================================
-   PUBLIC/SEGURO — confirmar pagamento por TOKEN (não txid)
-   - Requer header X-APP-KEY igual a APP_PUBLIC_KEY
-   - Body: { token, nome, valorCentavos, tipo, chave }
-   - Valida na Efi: status = "CONCLUIDA" e valor bate
-   - Grava em "bancas"
-   ========================================================= */
 app.post('/api/pix/confirmar', async (req, res) => {
   try{
     if (!APP_PUBLIC_KEY) return res.status(403).json({ error:'public_off' });
@@ -416,10 +380,7 @@ app.post('/api/pix/confirmar', async (req, res) => {
   }
 });
 
-/* =========================================================
-   (Opcional) PUBLIC: salvar sem validar TXID (legado)
-   Mantido para testes. Em produção, prefira /api/pix/confirmar.
-   ========================================================= */
+
 app.post('/api/public/bancas', async (req, res) => {
   try{
     if (!APP_PUBLIC_KEY) return res.status(403).json({ error:'public_off' });
@@ -449,12 +410,10 @@ app.post('/api/public/bancas', async (req, res) => {
   }
 });
 
-// ====== MIDDLEWARE: todas as rotas da Área exigem login ======
+
 const areaAuth = [requireAuth];
 
-/* =========================================================
-   BANCAS (Postgres)
-   ========================================================= */
+
 app.get('/api/bancas', areaAuth, async (req, res) => {
   const { rows } = await q(
     `select id, nome,
@@ -563,9 +522,7 @@ app.delete('/api/bancas/:id', areaAuth, async (req, res) => {
   res.json({ ok:true });
 });
 
-/* =========================================================
-   PAGAMENTOS (Postgres)
-   ========================================================= */
+
 app.get('/api/pagamentos', areaAuth, async (req, res) => {
   const { rows } = await q(
     `select id, nome,
@@ -613,7 +570,7 @@ app.delete('/api/pagamentos/:id', areaAuth, async (req, res) => {
   res.json({ ok:true });
 });
 
-// ===== start =====
+
 app.listen(PORT, async () => {
   try{
     await q('select 1');

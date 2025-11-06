@@ -1,11 +1,4 @@
-/* ========================================= 
-   Depósito PIX – front (produção)
-   - Usa TOKEN opaco se o backend retornar; senão usa TXID
-   - Cria modal do QR por JS
-   - Chama backend Efi (/api/pix/cob e /api/pix/status/:token|:txid)
-   - Ao confirmar: registra no servidor (/api/pix/confirmar)
-     e cai para localStorage se o servidor rejeitar
-   ========================================= */
+
 
 const API = window.location.origin;
 
@@ -43,7 +36,7 @@ function getMeta(name){
   return el ? el.content : '';
 }
 
-/* ===== Persistência ===== */
+
 // Salva UNIVERSAL no servidor validando (rota pública segura via TOKEN ou TXID)
 async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, chave }){
   const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
@@ -248,7 +241,6 @@ function ensurePixModal(){
   return dlg;
 }
 
-/* ===== Backend Efi (aceita token ou txid) ===== */
 async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
   // cpf opcional aqui: só enviaremos quando tipo for 'cpf'
   const resp = await fetch(`${API}/api/pix/cob`, {

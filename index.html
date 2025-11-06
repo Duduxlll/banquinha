@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bancas • Depósito PIX</title>
 
-  <!-- Deve ser igual à APP_PUBLIC_KEY do servidor -->
+  
   <meta name="app-key" content="b01c7cd2e87519f8d0e62fafc69c80f8babb54d0a9799fefdad28d4520e7d25bd39f140cb948041e5c5caa43e7d7f905">
 
   <link rel="stylesheet" href="assets/css/style.css">
@@ -18,7 +18,7 @@
         <div class="logo" aria-hidden="true"></div>
         <div>
           <div class="brand">Bancas</div>
-          <div class="subtitle">Depósito via PIX simples, bonito e seguro ✨</div>
+          <div class="subtitle">Depósito via PIX simples e seguro ✨</div>
         </div>
       </div>
     </div>
@@ -26,7 +26,7 @@
 
   <main class="wrap">
     <div class="grid">
-      <!-- FORMULÁRIO PRINCIPAL -->
+      
       <section class="card" aria-labelledby="form-title">
         <div class="banner">
           <div class="hero-shape" aria-hidden="true"></div>
@@ -40,7 +40,7 @@
 
         <div class="card-body">
           <form id="depositoForm" novalidate>
-            <!-- Linha: Tipo de chave + Campo da chave -->
+            
             <div class="row">
               <div>
                 <label for="tipoChave">Tipo de chave PIX</label>
@@ -55,20 +55,20 @@
 
               <div id="chaveWrapper">
                 <label for="chavePix">Informe sua chave PIX</label>
-                <!-- Quando o tipo for CPF, este mesmo campo recebe o CPF (app.js fará máscara e limite de 11 dígitos) -->
+               
                 <input class="input" type="text" id="chavePix" name="chavePix" placeholder="Cole aqui sua chave" autocomplete="off">
                 <div class="error" id="chaveError">Informe uma chave PIX válida.</div>
               </div>
             </div>
 
-            <!-- Nome completo abaixo do tipo de chave -->
+
             <div style="margin-top:16px">
               <label for="nome">Nome completo</label>
               <input class="input" type="text" id="nome" name="nome" placeholder="Seu nome" required>
               <div class="error" id="nomeError">Informe seu nome.</div>
             </div>
 
-            <!-- Valor -->
+           
             <div style="margin-top:16px">
               <label for="valor">Valor do depósito</label>
               <input class="input" type="text" id="valor" name="valor" inputmode="decimal" placeholder="R$ 10,00 (mínimo)" required>
@@ -89,7 +89,7 @@
           <div class="card-body">
             <h3 style="margin-top:0">Resumo</h3>
             <ul class="summary-list" id="resumo">
-              <!-- CPF foi removido do resumo: a “Chave” já cobre o caso de CPF -->
+             
               <li><span class="k">Nome</span> <span id="r-nome">—</span></li>
               <li><span class="k">Tipo de chave</span> <span id="r-tipo">CPF</span></li>
               <li><span class="k">Chave</span> <span id="r-chave">—</span></li>
@@ -120,7 +120,7 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <!-- Seu JS externo (sem script inline) -->
+  
   <script src="assets/js/app.js"></script>
 </body>
 </html>

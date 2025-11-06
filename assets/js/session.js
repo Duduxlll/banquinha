@@ -1,9 +1,4 @@
-/* =========================================
-   session.js
-   - Garante login (protege /area.html)
-   - Implementa Logout com CSRF + cookies
-   - Sem inline script (compatível com CSP: script-src 'self')
-   ========================================= */
+
 
 (function () {
   // Util: ler cookie
@@ -33,9 +28,7 @@
         credentials: "include",
       });
       if (resp.ok) {
-        // opcional: limpar dados locais da Área
-        // localStorage.removeItem("bancas");
-        // localStorage.removeItem("pagamentos");
+        
         location.href = "/login.html";
       } else {
         alert("Não foi possível sair. Tente novamente.");

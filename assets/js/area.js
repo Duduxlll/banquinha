@@ -1,14 +1,6 @@
-/* =========================================
-   area.js — Bancas & Pagamentos (via API)
-   - Atualização ao vivo com SSE (Server-Sent Events)
-   - NÃO muda de aba ao mover para pagamentos
-   - Bancas: Nome | Depósito | Banca(editável) | Ações
-   - Pagamentos: Nome | Pagamento | Ações (Fazer PIX, Pago/Não pago, Excluir)
-   - Menu de status flutuante (fora do scroll)
-   - Auto-exclusão de "pago" após 3 minutos (robusto a reload)
-   ========================================= */
 
-/* ========== Utils base ========== */
+
+
 const API = window.location.origin; // mesma origem
 const qs  = (s, r=document) => r.querySelector(s);
 const qsa = (s, r=document) => [...r.querySelectorAll(s)];
