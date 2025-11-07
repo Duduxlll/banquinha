@@ -1,4 +1,4 @@
-// server/server.js — versão com Extratos (depósitos + pagamentos) e filtros
+// server/server.js — versão com Extratos (depósitos + pagamentos) e filtros (corrigido ref_id)
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -18,18 +18,18 @@ import pkg from 'pg';
 const { Pool } = pkg;
 
 /*
-SQL sugerido p/ criar tabela de extratos:
-
+SQL sugerido p/ criar tabela de extratos (apenas referência):
 CREATE TABLE IF NOT EXISTS extratos (
   id           text PRIMARY KEY,
+  ref_id       text NOT NULL,        -- id de origem (banca.id ou pagamento.id)
   nome         text NOT NULL,
-  tipo         text NOT NULL,         -- 'deposito' | 'pagamento'
+  tipo         text NOT NULL,        -- 'deposito' | 'pagamento'
   valor_cents  integer NOT NULL,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS extratos_created_at_idx ON extratos (created_at DESC);
-CREATE INDEX IF NOT EXISTS extratos_nome_idx       ON extratos (lower(nome));
-CREATE INDEX IF NOT EXISTS extratos_tipo_idx       ON extratos (tipo);
+CREATE INDEX IF NOT EXISTS extratos_tipo_idx       ON extratos (tipo, created_at DESC);
+CREATE INDEX IF NOT EXISTS extratos_ref_idx        ON extratos (ref_id);
 */
 
 const {
@@ -307,11 +307,11 @@ app.post('/api/pix/confirmar', async (req, res) => {
       [id, nome, valorCentavos, null, tipo, chave]
     );
 
-    // 3.1) registra no extrato (DEPÓSITO)
+    // 3.1) registra no extrato (DEPÓSITO) com ref_id = id da banca
     await q(
-      `insert into extratos (id, nome, tipo, valor_cents, created_at)
-       values ($1,$2,'deposito',$3, now())`,
-      [uid(), nome, valorCentavos]
+      `insert into extratos (id, ref_id, nome, tipo, valor_cents, created_at)
+       values ($1,$2,$3,'deposito',$4, now())`,
+      [uid(), rows[0].id, nome, valorCentavos]
     );
     sseSendAll('extratos-changed', { reason: 'deposito' });
 
@@ -326,7 +326,7 @@ app.post('/api/pix/confirmar', async (req, res) => {
   }
 });
 
-// (Opcional) criar banca pública manual também pode registrar no extrato como depósito manual
+// (Opcional) criar banca pública manual também registra no extrato como depósito manual
 app.post('/api/public/bancas', async (req, res) => {
   try{
     if (!APP_PUBLIC_KEY) return res.status(403).json({ error:'public_off' });
@@ -347,11 +347,11 @@ app.post('/api/public/bancas', async (req, res) => {
       [id, nome, depositoCents, null, pixType, pixKey]
     );
 
-    // registra depósito manual no extrato
+    // registra depósito manual no extrato (ref_id = id da banca)
     await q(
-      `insert into extratos (id, nome, tipo, valor_cents, created_at)
-       values ($1,$2,'deposito',$3, now())`,
-      [uid(), nome, depositoCents]
+      `insert into extratos (id, ref_id, nome, tipo, valor_cents, created_at)
+       values ($1,$2,$3,'deposito',$4, now())`,
+      [uid(), rows[0].id, nome, depositoCents]
     );
     sseSendAll('extratos-changed', { reason: 'deposito-manual' });
 
@@ -518,6 +518,14 @@ app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
   const { status } = req.body || {};
   if (!['pago','nao_pago'].includes(status)) return res.status(400).json({ error: 'status_invalido' });
 
+  // lê antes para checar transição
+  const beforeQ = await q(
+    `select id, nome, pagamento_cents, status, paid_at from pagamentos where id = $1`,
+    [req.params.id]
+  );
+  if (!beforeQ.rows.length) return res.status(404).json({ error:'not_found' });
+  const before = beforeQ.rows[0];
+
   const { rows } = await q(
     `update pagamentos
        set status = $2,
@@ -525,19 +533,19 @@ app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
      where id = $1
      returning id, nome,
                pagamento_cents as "pagamentoCents",
-               pix_type as "pixType",
+               pix_type as "PixType",
                pix_key  as "pixKey",
                status, created_at as "createdAt", paid_at as "paidAt"`,
     [req.params.id, status]
   );
   if (!rows.length) return res.status(404).json({ error:'not_found' });
 
-  // se virou 'pago', registra no extrato
-  if (rows[0]?.status === 'pago') {
+  // se mudou de nao_pago -> pago, registra extrato (ref_id = id do pagamento)
+  if (status === 'pago' && before.status !== 'pago') {
     await q(
-      `insert into extratos (id, nome, tipo, valor_cents, created_at)
-       values ($1,$2,'pagamento',$3, now())`,
-      [uid(), rows[0].nome, rows[0].pagamentoCents]
+      `insert into extratos (id, ref_id, nome, tipo, valor_cents, created_at)
+       values ($1,$2,$3,'pagamento',$4, coalesce($5, now()))`,
+      [uid(), rows[0].id, rows[0].nome, rows[0].pagamentoCents, rows[0].paidAt]
     );
     sseSendAll('extratos-changed', { reason: 'pagamento' });
   }
@@ -554,7 +562,8 @@ app.delete('/api/pagamentos/:id', areaAuth, async (req, res) => {
 });
 
 // ===== EXTRATOS (com filtros) =====
-// Suporta: ?tipo=deposito|pagamento  &nome=  &from=YYYY-MM-DD  &to=YYYY-MM-DD  &range=today|last7|last30  &limit=200
+// Suporta: ?tipo=deposito|pagamento  &nome=  &from=YYYY-MM-DD  &to=YYYY-MM-DD
+//          &range=today|last7|last30  &limit=200
 app.get('/api/extratos', areaAuth, async (req, res) => {
   let { tipo, nome, from, to, range, limit = 200 } = req.query || {};
 
@@ -581,7 +590,13 @@ app.get('/api/extratos', areaAuth, async (req, res) => {
 
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
   const sql = `
-    SELECT id, nome, tipo, valor_cents AS "valorCents", created_at AS "createdAt"
+    SELECT
+      id,
+      ref_id        AS "refId",
+      nome,
+      tipo,
+      valor_cents   AS "valorCents",
+      created_at    AS "createdAt"
     FROM extratos
     ${where}
     ORDER BY created_at DESC
