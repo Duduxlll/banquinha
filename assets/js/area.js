@@ -176,11 +176,12 @@ function renderBancas(){
 function renderPagamentos(){
   if (!tbodyPags) return;
   const lista = STATE.pagamentos;
+
   tbodyPags.innerHTML = lista.length ? lista.map(p => {
     const isPago = p.status === 'pago';
     const statusTxt = isPago ? 'Pago' : 'Não pago';
     const statusCls = isPago ? 'status--pago' : 'status--nao';
-    const hasMsg = !!(p.message && String(p.message).trim());
+
     return `
       <tr data-id="${p.id}">
         <td>${esc(p.nome)}</td>
@@ -194,9 +195,12 @@ function renderPagamentos(){
                     data-status="${p.status}">
               ${statusTxt} <span class="caret"></span>
             </button>
+
+            <!-- Voltar para Bancas -->
             <button class="btn btn--primary" data-action="to-banca" data-id="${p.id}">Bancas</button>
+
             <button class="btn btn--primary" data-action="fazer-pix" data-id="${p.id}">Fazer PIX</button>
-            <button class="btn" data-action="ver-msg" data-id="${p.id}" ${hasMsg?'':'disabled'}>Ver mensagem</button>
+            <!-- REMOVIDO: botão "Ver mensagem" nesta aba -->
             <button class="btn btn--danger"  data-action="del-pag"   data-id="${p.id}">Excluir</button>
           </div>
         </td>
