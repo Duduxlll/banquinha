@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="assets/css/area.css">
 </head>
 <body>
-  <!-- Banner grande com logo -->
+  
   <header class="hero">
     <div class="hero-overlay"></div>
     <div class="hero-wrap">
@@ -22,7 +22,7 @@
   </header>
 
   <main class="layout">
-    <!-- Menu lateral -->
+    
     <aside class="sidebar">
       <div class="brand">
         <img src="assets/img/banner.jpg" alt="Bancas" class="brand-img">
@@ -36,9 +36,9 @@
       </nav>
     </aside>
 
-    <!-- Conteúdo -->
+    
     <section class="content">
-      <!-- TAB: BANCAS -->
+      
       <div class="tab tab-view show" id="tab-bancas">
         <div class="bar">
           <input id="busca" class="input" type="text" placeholder="Buscar por nome…">
@@ -55,13 +55,13 @@
                   <th class="col-acoes">Ações</th>
                 </tr>
               </thead>
-              <tbody><!-- linhas via JS --></tbody>
+              <tbody>  </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- TAB: PAGAMENTOS -->
+      
       <div class="tab tab-view" id="tab-pagamentos">
         <div class="card">
           <div class="table-wrap">
@@ -73,15 +73,14 @@
                   <th class="col-acoes">Ações</th>
                 </tr>
               </thead>
-              <tbody><!-- linhas via JS --></tbody>
+              <tbody>    </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- TAB: EXTRATOS -->
       <div class="tab tab-view" id="tab-extratos">
-        <!-- Barra de filtros -->
+        
         <div class="card">
           <div class="bar" style="display:grid; gap:10px; grid-template-columns: 1fr; margin-bottom:8px">
             <div style="display:grid; gap:8px; grid-template-columns: repeat(6, minmax(0,1fr)); align-items:end">
@@ -124,7 +123,7 @@
           </div>
         </div>
 
-        <!-- Lista: Depósitos -->
+        
         <div class="card" data-card="deps">
           <h3 style="margin:0 0 10px">Depósitos</h3>
           <div class="table-wrap">
@@ -136,12 +135,12 @@
                   <th>Data</th>
                 </tr>
               </thead>
-              <tbody><!-- linhas via JS --></tbody>
+              <tbody></tbody>
             </table>
           </div>
         </div>
 
-        <!-- Lista: Pagamentos -->
+        
         <div class="card" data-card="pags">
           <h3 style="margin:0 0 10px">Pagamentos</h3>
           <div class="table-wrap">
@@ -153,18 +152,18 @@
                   <th>Data</th>
                 </tr>
               </thead>
-              <tbody><!-- linhas via JS --></tbody>
+              <tbody></tbody>
             </table>
           </div>
         </div>
       </div>
-      <!-- /TAB: EXTRATOS -->
+      
     </section>
   </main>
 
   <div class="toast" id="toast"></div>
 
-  <!-- [ADD mensagem] Modal reutilizável para “Ver mensagem” -->
+  
   <dialog id="msgModal" style="border:0; padding:0; background:transparent;">
     <div style="
       width:min(94vw,520px);
@@ -180,9 +179,7 @@
       </div>
     </div>
   </dialog>
-  <!-- /[ADD mensagem] -->
-
-  <!-- Ordem correta: primeiro sessão, depois área -->
+  
   <script src="assets/js/session.js" defer></script>
   <script src="assets/js/area.js" defer></script>
 </body>

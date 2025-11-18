@@ -1,6 +1,3 @@
-// assets/js/area.js — completo
-// Bancas, Pagamentos, Extratos + Mensagens + correções de foco/refresh
-
 const API = window.location.origin;
 const qs  = (s, r=document) => r.querySelector(s);
 const qsa = (s, r=document) => [...r.querySelectorAll(s)];
@@ -34,7 +31,6 @@ function debounce(fn, wait = 300){
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
 }
 
-/* ========== Elementos ========== */
 const tabBancasEl     = qs('#tab-bancas');
 const tabPagamentosEl = qs('#tab-pagamentos');
 const tabExtratosEl   = qs('#tab-extratos');
@@ -55,18 +51,16 @@ const filtroTo    = qs('#filtro-to');
 const btnFiltrar  = qs('#btn-filtrar');
 const btnLimpar   = qs('#btn-limpar');
 
-/* ========== Estado ========== */
 let TAB = localStorage.getItem('area_tab') || 'bancas';
 const STATE = {
   bancas: [],
   pagamentos: [],
   extratos: { depositos: [], pagamentos: [] },
-  timers: new Map(),            // id => timeoutId (auto-delete pagos)
+  timers: new Map(),
   filtrosExtratos: { tipo:'all', range:'last30', from:null, to:null },
-  editingBancaId: null          // evita re-render enquanto editando
+  editingBancaId: null
 };
 
-/* ========== Carregamento ========== */
 async function loadBancas() {
   const list = await apiFetch(`/api/bancas`);
   STATE.bancas = list.sort((a,b)=> (a.createdAt||'') < (b.createdAt||'') ? 1 : -1);
@@ -78,7 +72,6 @@ async function loadPagamentos() {
   return STATE.pagamentos;
 }
 
-/* ===== Extratos ===== */
 function buildExtratosQuery(){
   const f = STATE.filtrosExtratos || {};
   const params = new URLSearchParams();
@@ -116,7 +109,6 @@ async function loadExtratos(){
   return STATE.extratos;
 }
 
-/* ========== Render ========== */
 async function render(){
   if (TAB==='bancas'){
     tabBancasEl?.classList.add('show');
@@ -139,7 +131,6 @@ async function render(){
 function renderBancas(){
   if (!tbodyBancas) return;
 
-  // Se está editando, não destruir o DOM da linha para preservar foco
   const focused = document.activeElement;
   const isEditing = !!focused?.matches?.('input[data-role="banca"]');
   if (isEditing) return;
@@ -196,11 +187,9 @@ function renderPagamentos(){
               ${statusTxt} <span class="caret"></span>
             </button>
 
-            <!-- Voltar para Bancas -->
             <button class="btn btn--primary" data-action="to-banca" data-id="${p.id}">Bancas</button>
 
             <button class="btn btn--primary" data-action="fazer-pix" data-id="${p.id}">Fazer PIX</button>
-            <!-- REMOVIDO: botão "Ver mensagem" nesta aba -->
             <button class="btn btn--danger"  data-action="del-pag"   data-id="${p.id}">Excluir</button>
           </div>
         </td>
@@ -252,7 +241,6 @@ function renderExtratos(){
   }
 }
 
-/* ========== AÇÕES ========== */
 async function setTab(tab){
   TAB = tab;
   localStorage.setItem('area_tab', tab);
@@ -328,7 +316,6 @@ async function setStatus(id, value){
   }
 }
 
-/* ========== Auto delete 3 min ========== */
 function scheduleAutoDelete(item){
   const { id, paidAt } = item;
   if (!paidAt) return;
@@ -348,7 +335,6 @@ function setupAutoDeleteTimers(){
   });
 }
 
-/* ========== Modal “Fazer PIX” ========== */
 function abrirPixModal(id){
   const p = STATE.pagamentos.find(x=>x.id===id);
   if(!p) return;
@@ -358,7 +344,6 @@ function abrirPixModal(id){
     dlg.id = 'payModal';
     dlg.style.border='0'; dlg.style.padding='0'; dlg.style.background='transparent';
 
-    // Backdrop suave
     injectOnce('payModalBackdropCSS', `
       #payModal::backdrop{ background: rgba(8,12,26,.65); backdrop-filter: blur(6px) saturate(.9); }
     `);
@@ -400,7 +385,6 @@ function abrirPixModal(id){
   dlg.showModal();
 }
 
-/* ========== Modal “Ver mensagem” (com backdrop blur) ========== */
 let msgModalEl = null;
 function injectOnce(id, css){
   if (document.getElementById(id)) return;
@@ -456,7 +440,6 @@ function abrirMensagem(texto){
   dlg.showModal();
 }
 
-/* ========== Menu flutuante status ========== */
 let statusMenuEl = null;
 let statusMenuId = null;
 
@@ -514,9 +497,7 @@ function hideStatusMenu(){
   statusMenuId = null;
 }
 
-/* ========== Listeners globais ========== */
 document.addEventListener('click', (e)=>{
-  // status menu
   const openBtn = e.target.closest('button[data-action="status-open"]');
   if(openBtn){
     const id = openBtn.dataset.id;
@@ -529,7 +510,6 @@ document.addEventListener('click', (e)=>{
   if(!e.target.closest('.status-float')) hideStatusMenu();
 });
 
-// Abrir mensagem
 document.addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-action="ver-msg"]');
   if(!btn) return;
@@ -540,7 +520,6 @@ document.addEventListener('click', (e)=>{
   abrirMensagem(msg);
 });
 
-// Ações
 document.addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-action]');
   if(!btn) return;
@@ -552,7 +531,6 @@ document.addEventListener('click', (e)=>{
   if(action==='to-banca')     return toBanca(id).catch(console.error);
 });
 
-/* ========== Input de Banca (máscara + salvar sem quebrar foco) ========== */
 document.addEventListener('focusin', (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
@@ -561,10 +539,7 @@ document.addEventListener('focusin', (e)=>{
 document.addEventListener('focusout', (e)=>{
   const inp = e.target.closest('input[data-role="banca"]');
   if(!inp) return;
-  // se o foco foi para outro controle de ação na mesma linha, ainda assim salvamos,
-  // mas NÃO fazemos render imediato para não "expulsar" o foco.
   saveBancaInline(inp).catch(console.error).finally(()=>{
-    // mantém STATE.editingBancaId somente se ainda estiver focado em outro input de banca
     const still = document.activeElement?.closest?.('input[data-role="banca"]');
     STATE.editingBancaId = still ? still.dataset.id : null;
   });
@@ -573,11 +548,9 @@ document.addEventListener('focusout', (e)=>{
 async function saveBancaInline(inp){
   const id = inp.dataset.id;
   const cents = toCents(inp.value);
-  // Atualiza estado local
   const item = STATE.bancas.find(x=>x.id===id);
   if (item) item.bancaCents = cents;
 
-  // PATCH sem re-render imediato
   try{
     await apiFetch(`/api/bancas/${encodeURIComponent(id)}`, {
       method:'PATCH',
@@ -594,7 +567,6 @@ document.addEventListener('input', (e)=>{
   v = v.replace(/^0+/, '');
   if(v.length<3) v = v.padStart(3,'0');
   inp.value = fmtBRL(parseInt(v,10));
-  // não dispara render aqui
 });
 
 document.addEventListener('keydown', (e)=>{
@@ -602,11 +574,10 @@ document.addEventListener('keydown', (e)=>{
   if(!inp) return;
   if (e.key === 'Enter') {
     e.preventDefault();
-    inp.blur(); // dispara o saveBancaInline
+    inp.blur();
   }
 });
 
-/* ========== Busca tabelas ========== */
 function filtrarTabela(tbody, q){
   if(!tbody) return;
   const query = (q||'').trim().toLowerCase();
@@ -620,7 +591,6 @@ buscaInput?.addEventListener('input', ()=>{
   else                filtrarTabela(tbodyPags,   q);
 });
 
-/* ========== Filtros Extratos ========== */
 function readExtratoFiltersFromDOM(){
   const f = STATE.filtrosExtratos;
   if (filtroTipo)  f.tipo  = filtroTipo.value || 'all';
@@ -650,14 +620,12 @@ btnLimpar?.addEventListener('click',    async ()=>{
   renderExtratos();
 });
 
-/* ========== SSE (ao vivo) ========== */
 let es = null;
 function startStream(){
   if (es) try { es.close(); } catch {}
   es = new EventSource(`${API}/api/stream`);
 
   const softRefreshBancas = debounce(async () => {
-    // Se estou editando uma banca, não destrua a linha
     const focused = document.activeElement;
     const isEditing = !!focused?.matches?.('input[data-role="banca"]');
     if (isEditing) return;
@@ -689,12 +657,9 @@ function startStream(){
   };
 }
 
-/* ========== start ========== */
 document.addEventListener('DOMContentLoaded', async ()=>{
-  // ativa o botão atual
   qsa('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === TAB);
-    // garante que o clique troque de aba
     btn.addEventListener('click', ()=> setTab(btn.dataset.tab));
   });
 

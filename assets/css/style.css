@@ -10,7 +10,7 @@
   --shadow: 0 20px 50px rgba(0,0,0,.45);
   --radius: 18px;
 
-  /* ==> Coloque sua imagem do banner em assets/img/banner.jpg */
+  
   --banner-img: url('../img/banner.jpg');
 }
 *{box-sizing:border-box}
@@ -32,7 +32,7 @@ header{
 }
 .wrap{max-width:1080px;margin:auto;padding:20px}
 .topbar{display:flex;align-items:center;gap:14px;}
-/* ==> Logo do topo (troque assets/img/logo.png) */
+
 .brand-img{height:44px;width:auto;border-radius:10px;box-shadow: 0 10px 30px rgba(124,92,255,.25)}
 
 .brand{font-weight:800; font-size:1.25rem; letter-spacing:.5px}
@@ -91,12 +91,12 @@ select.input{appearance:none;background-image: url('data:image/svg+xml;utf8,<svg
 .summary-list li{display:flex;justify-content:space-between;gap:12px;background:#0e1327;border:1px solid rgba(255,255,255,.06);padding:12px 14px;border-radius:12px}
 .summary-list .k{color:var(--muted)}
 
-/* === Banner ocupa a área inteira com sua imagem === */
+
 .banner{
   position:relative; min-height:220px; border-bottom:1px dashed rgba(255,255,255,.08);
   background: linear-gradient(0deg, rgba(15,18,34,.4), rgba(15,18,34,.2)), var(--banner-img);
-  background-size: cover;         /* cobre toda a área */
-  background-position: center;    /* centraliza */
+  background-size: cover;         
+  background-position: center;    
   background-repeat: no-repeat;
   overflow:hidden;
 }

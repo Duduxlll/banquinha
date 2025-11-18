@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bancas • Depósito PIX</title>
 
-  <!-- Igual à APP_PUBLIC_KEY do servidor -->
+  
   <meta name="app-key" content="b01c7cd2e87519f8d0e62fafc69c80f8babb54d0a9799fefdad28d4520e7d25bd39f140cb948041e5c5caa43e7d7f905">
 
   <link rel="stylesheet" href="assets/css/style.css">
@@ -26,7 +26,7 @@
 
   <main class="wrap">
     <div class="grid">
-      <!-- FORMULÁRIO -->
+      
       <section class="card" aria-labelledby="form-title">
         <div class="banner">
           <div class="hero-shape" aria-hidden="true"></div>
@@ -65,14 +65,14 @@
               <div class="error" id="nomeError">Informe seu nome.</div>
             </div>
 
-            <!-- [ADD mensagem] campo de mensagem opcional -->
+           
             <div style="margin-top:16px">
               <label for="mensagem">Mensagem (opcional)</label>
               <textarea class="input" id="mensagem" name="message" rows="3" maxlength="240"
                         placeholder="Escreva uma mensagem para aparecer na Área (máx. 240 caracteres)"></textarea>
               <p class="help">Essa mensagem será exibida na Área administrativa, no botão <strong>Ver mensagem</strong>.</p>
             </div>
-            <!-- [/ADD mensagem] -->
+            
 
             <div style="margin-top:16px">
               <label for="valor">Valor do depósito</label>
@@ -88,7 +88,7 @@
         </div>
       </section>
 
-      <!-- RESUMO AO LADO -->
+     
       <aside class="aside">
         <section class="card">
           <div class="card-body">
@@ -98,9 +98,9 @@
               <li><span class="k">Tipo de chave</span> <span id="r-tipo">CPF</span></li>
               <li><span class="k">Chave</span> <span id="r-chave">—</span></li>
               <li><span class="k">Valor</span> <span id="r-valor">—</span></li>
-              <!-- [ADD mensagem] resumo da mensagem -->
+            
               <li><span class="k">Mensagem</span> <span id="r-msg">—</span></li>
-              <!-- [/ADD mensagem] -->
+             
             </ul>
           </div>
         </section>
@@ -124,18 +124,18 @@
     </footer>
   </main>
 
-  <!-- TOAST -->
+ 
   <div class="toast" id="toast"></div>
 
-  <!-- Scripts -->
+  
   <script src="assets/js/app.js"></script>
 
-  <!-- [ADD mensagem] Só atualiza o “Resumo” da mensagem enquanto digita -->
+  
   <script>
     (function () {
       const ta = document.getElementById('mensagem');
       const out = document.getElementById('r-msg');
-      const limit = 100; // preview no resumo
+      const limit = 100; 
 
       function update() {
         if (!ta || !out) return;
@@ -148,6 +148,6 @@
       document.addEventListener('DOMContentLoaded', update);
     })();
   </script>
-  <!-- [/ADD mensagem] -->
+  
 </body>
 </html>

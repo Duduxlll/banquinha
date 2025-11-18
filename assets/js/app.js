@@ -1,6 +1,5 @@
 const API = window.location.origin;
 
-/* ===== Seletores ===== */
 const nomeInput   = document.querySelector('#nome');
 const tipoSelect  = document.querySelector('#tipoChave');
 const chaveWrap   = document.querySelector('#chaveWrapper');
@@ -10,19 +9,15 @@ const form        = document.querySelector('#depositoForm');
 const toast       = document.querySelector('#toast');
 const btnSubmit   = document.querySelector('#btnDepositar');
 
-// [ADD mensagem] seletores da mensagem
 const mensagemInput = document.querySelector('#mensagem');
 
-// Resumo (sem r-cpf)
 const rNome    = document.querySelector('#r-nome');
 const rTipo    = document.querySelector('#r-tipo');
 const rChaveLi = document.querySelector('#r-chave-li') || document.querySelector('#resumo li:nth-child(3)');
 const rChave   = document.querySelector('#r-chave');
 const rValor   = document.querySelector('#r-valor');
-// [ADD mensagem] saída no resumo
 const rMsg     = document.querySelector('#r-msg');
 
-/* ===== Utils ===== */
 document.querySelector('#ano') && (document.querySelector('#ano').textContent = new Date().getFullYear());
 
 function notify(msg, isError=false, time=3200){
@@ -39,9 +34,6 @@ function getMeta(name){
   return el ? el.content : '';
 }
 
-
-// Salva UNIVERSAL no servidor validando (rota pública segura via TOKEN ou TXID)
-// [ADD mensagem] agora aceita { message }
 async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, chave, message }){
   const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
   const res = await fetch(`${API}/api/pix/confirmar`, {
@@ -57,7 +49,7 @@ async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, 
       valorCentavos,
       tipo,
       chave,
-      message: message || null // [ADD mensagem]
+      message: message || null
     })
   });
   if (!res.ok) {
@@ -68,8 +60,6 @@ async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, 
   return res.json();
 }
 
-// Fallback local (visível só neste navegador)
-// [ADD mensagem] persiste message também
 function saveLocal({ nome, valorCentavos, tipo, chave, message }){
   const registro = {
     id: Date.now().toString(),
@@ -77,7 +67,7 @@ function saveLocal({ nome, valorCentavos, tipo, chave, message }){
     depositoCents: valorCentavos,
     pixType: tipo,
     pixKey:  chave,
-    message: message || null, // [ADD mensagem]
+    message: message || null,
     createdAt: new Date().toISOString()
   };
   const bancas = JSON.parse(localStorage.getItem('bancas') || '[]');
@@ -85,23 +75,17 @@ function saveLocal({ nome, valorCentavos, tipo, chave, message }){
   localStorage.setItem('bancas', JSON.stringify(bancas));
 }
 
-/* ===== Máscaras & Resumo ===== */
-
-// Nome > Resumo
 nomeInput?.addEventListener('input', () => rNome && (rNome.textContent = nomeInput.value.trim() || '—'));
 
-// [ADD mensagem] Mensagem > Resumo (preview)
 mensagemInput?.addEventListener('input', () => {
   if (!rMsg) return;
   const v = (mensagemInput.value || '').trim();
   rMsg.textContent = v ? (v.length > 100 ? v.slice(0,100)+'…' : v) : '—';
 });
 
-// Alterna campo da chave conforme o tipo
 function updateTipoUI(){
   if (!tipoSelect) return;
   const t = tipoSelect.value;
-  // Sempre mostra o campo da chave (inclusive para CPF)
   if (chaveWrap) chaveWrap.style.display = '';
   if (rChaveLi)  rChaveLi.style.display  = '';
   if (rTipo)     rTipo.textContent = t === 'aleatoria' ? 'Chave aleatória' : (t.charAt(0).toUpperCase()+t.slice(1));
@@ -109,9 +93,7 @@ function updateTipoUI(){
   if (!chaveInput) return;
 
   if (t === 'cpf'){
-    // CPF: placeholder e maxlength “visual”
     chaveInput.placeholder = '000.000.000-00';
-    // limpa para evitar sujeira de formatações anteriores
     chaveInput.value = maskCPF(chaveInput.value);
     rChave && (rChave.textContent = chaveInput.value.trim() || '—');
   } else if (t === 'telefone'){
@@ -122,7 +104,6 @@ function updateTipoUI(){
     chaveInput.placeholder = 'seu@email.com';
     rChave && (rChave.textContent = chaveInput.value.trim() || '—');
   } else {
-    // aleatória
     chaveInput.placeholder = 'Ex.: 2e1a-…';
     rChave && (rChave.textContent = chaveInput.value.trim() || '—');
   }
@@ -130,7 +111,6 @@ function updateTipoUI(){
 tipoSelect?.addEventListener('change', updateTipoUI);
 updateTipoUI();
 
-// Máscara dinâmica para o campo da chave (de acordo com o tipo)
 function maskCPF(raw){
   let v = String(raw||'').replace(/\D/g,'').slice(0,11);
   v = v.replace(/(\d{3})(\d)/,'$1.$2')
@@ -156,7 +136,6 @@ chaveInput?.addEventListener('input', () => {
   rChave && (rChave.textContent = chaveInput.value.trim() || '—');
 });
 
-// Valor com máscara R$
 valorInput?.addEventListener('input', () => {
   let v = valorInput.value.replace(/\D/g,'');
   if(!v){ rValor && (rValor.textContent='—'); valorInput.value=''; return; }
@@ -167,7 +146,6 @@ valorInput?.addEventListener('input', () => {
   rValor && (rValor.textContent = money);
 });
 
-/* ===== Validações ===== */
 function isCPFValid(cpf){
   cpf = (cpf||'').replace(/\D/g,'');
   if(cpf.length !== 11 || /^([0-9])\1+$/.test(cpf)) return false;
@@ -180,7 +158,6 @@ function isCPFValid(cpf){
 function isEmail(v){ return /.+@.+\..+/.test(v); }
 function showError(sel, ok){ const el = document.querySelector(sel); ok ? el.classList.remove('show') : el.classList.add('show'); }
 
-/* ===== Modal de QR (dinâmico) ===== */
 function ensurePixStyles(){
   if (!document.getElementById('pixCss')) {
     const link = document.createElement('link');
@@ -209,7 +186,7 @@ function ensurePixModal(){
   const qrWrap = document.createElement('div');
   qrWrap.className = 'pix-qr-wrap';
 
-  const img = document.createElement('img');
+  const img = document.create.createElement('img');
   img.id = 'pixQr';
   img.className = 'pix-qr';
   img.alt = 'QR Code do PIX';
@@ -262,7 +239,6 @@ function ensurePixModal(){
 }
 
 async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
-  // cpf opcional aqui: só enviaremos quando tipo for 'cpf'
   const resp = await fetch(`${API}/api/pix/cob`, {
     method:'POST',
     headers:{ 'Content-Type':'application/json' },
@@ -273,34 +249,29 @@ async function criarCobrancaPIX({ nome, cpf, valorCentavos }){
     try{ const j = await resp.json(); if(j.error) err = j.error; }catch{}
     throw new Error(err);
   }
-  // Pode vir { token, emv, qrPng } OU { txid, emv, qrPng }
   return resp.json();
 }
 
-/* ===== Submit ===== */
 form?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const tipo = tipoSelect.value;
   const chaveVal = (chaveInput?.value || '').trim();
-  const messageVal = (mensagemInput?.value || '').trim(); // [ADD mensagem]
+  const messageVal = (mensagemInput?.value || '').trim();
 
-  // Validações por tipo
   let chaveOk = true;
   if (tipo === 'cpf')        chaveOk = isCPFValid(chaveVal);
   else if (tipo === 'email') chaveOk = isEmail(chaveVal);
   else if (tipo === 'telefone') chaveOk = chaveVal.replace(/\D/g,'').length === 11;
-  else                        chaveOk = chaveVal.length >= 10; // aleatória
+  else                        chaveOk = chaveVal.length >= 10;
 
   const nomeOk  = nomeInput.value.trim().length > 2;
   const valorCentavos = toCentsMasked(valorInput.value);
-  const valorOk       = valorCentavos >= 1; // R$ 10,00
+  const valorOk       = valorCentavos >= 1;
 
-  // Exibição de erros
   showError('#nomeError', nomeOk);
   showError('#chaveError',chaveOk);
   showError('#valorError',valorOk);
-  // Se sua página ainda tiver #cpfError, mantemos oculto
   const cpfErr = document.querySelector('#cpfError'); cpfErr && cpfErr.classList.remove('show');
 
   if (!(nomeOk && chaveOk && valorOk)){
@@ -308,17 +279,15 @@ form?.addEventListener('submit', async (e) => {
     return;
   }
 
-  const cpfParaEfi = (tipo === 'cpf') ? chaveVal : ''; // se a chave for CPF, enviamos o CPF à Efi
+  const cpfParaEfi = (tipo === 'cpf') ? chaveVal : '';
 
   try{
     btnSubmit && (btnSubmit.disabled = true);
 
-    // 1) criar a cobrança
     const cob = await criarCobrancaPIX({ nome: nomeInput.value.trim(), cpf: cpfParaEfi, valorCentavos });
     const tokenOrTxid = cob.token || cob.txid;
     const { emv, qrPng } = cob;
 
-    // 2) abrir modal com QR
     const dlg = ensurePixModal();
     const img = dlg.querySelector('#pixQr');
     const emvEl = dlg.querySelector('#pixEmv');
@@ -328,13 +297,12 @@ form?.addEventListener('submit', async (e) => {
     st.textContent = 'Aguardando pagamento…';
     if(typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open','');
 
-    // 3) polling /api/pix/status/:tokenOrTxid até CONCLUIDA
     async function check(){
       const s = await fetch(`${API}/api/pix/status/${encodeURIComponent(tokenOrTxid)}`).then(r=>r.json());
       return s.status === 'CONCLUIDA';
     }
 
-    let tries = 36; // 3 min (5s cada)
+    let tries = 36;
     const timer = setInterval(async ()=>{
       tries--;
       try{
@@ -343,7 +311,6 @@ form?.addEventListener('submit', async (e) => {
           clearInterval(timer);
           st.textContent = 'Pagamento confirmado! ✅';
 
-          // 4) registra no servidor com validação universal
           try{
             await saveOnServerConfirmado({
               tokenOrTxid,
@@ -351,16 +318,15 @@ form?.addEventListener('submit', async (e) => {
               valorCentavos,
               tipo,
               chave: chaveVal,
-              message: messageVal // [ADD mensagem]
+              message: messageVal
             });
           }catch(_err){
-            // fallback local se o servidor recusar (não recomendado para produção)
             saveLocal({
               nome: nomeInput.value.trim(),
               valorCentavos,
               tipo,
               chave: chaveVal,
-              message: messageVal // [ADD mensagem]
+              message: messageVal
             });
             notify('Servidor não confirmou o registro — salvo localmente.', true, 4200);
           }

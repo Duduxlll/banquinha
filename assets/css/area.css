@@ -5,8 +5,8 @@
   --line:rgba(255,255,255,.08);
   --muted:#9aa1c3;
   --text:#e7e9f3;
-  --brand:#6e8cff;      /* azul marinho vibrante */
-  --brand-2:#2bb4ff;    /* azul claro para gradiente */
+  --brand:#6e8cff;
+  --brand-2:#2bb4ff;
   --ok:#00d18f;
   --warn:#ffc857;
   --danger:#ff5c7a;
@@ -25,7 +25,6 @@ body{
   color:var(--text);
 }
 
-/* ---------- HERO ---------- */
 .hero{
   position:relative; min-height:160px; display:flex; align-items:flex-end;
   background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0));
@@ -42,7 +41,6 @@ body{
 .hero-title{margin:0; font-weight:800; font-size:2.1rem; letter-spacing:.4px}
 .hero-sub{margin:4px 0 0; color:var(--muted)}
 
-/* ---------- LAYOUT ---------- */
 .layout{width:min(1120px,92vw); margin:28px auto; display:grid; grid-template-columns:260px 1fr; gap:22px}
 @media (max-width: 900px){ .layout{ grid-template-columns:1fr } }
 
@@ -61,7 +59,6 @@ body{
   border-color: rgba(110,140,255,.35);
   box-shadow: inset 0 0 0 1px rgba(110,140,255,.22);
 }
-/* micro-efeito na ativa */
 .nav-btn{ position: relative; overflow: hidden; }
 .nav-btn.active::after{
   content:"";
@@ -99,13 +96,8 @@ body{
   padding:14px; border-bottom:1px solid rgba(255,255,255,.06);
 }
 .col-acoes{width:1%; white-space:nowrap}
+.table input.input-money{ min-width:140px; }
 
-/* Banca input (inline) */
-.table input.input-money{
-  min-width:140px;
-}
-
-/* ---------- BOTÕES ---------- */
 .btn{
   display:inline-flex; align-items:center; justify-content:center;
   padding:10px 12px; border-radius:10px; font-weight:700; letter-spacing:.2px;
@@ -126,7 +118,6 @@ body{
   border-color:rgba(255,255,255,.18);
 }
 
-/* NOVO: botões danger (vermelho) */
 .btn--danger{
   background: rgba(255,92,122,.08);
   border-color: rgba(255,92,122,.35);
@@ -134,10 +125,8 @@ body{
 }
 .btn--danger:hover{ filter: brightness(1.05); }
 
-/* Status cores */
 .ok{ color: var(--ok); font-weight:700 }
 .warn{ color: var(--warn); font-weight:700 }
-
 
 .tab{
   position: absolute;
@@ -155,14 +144,12 @@ body{
   pointer-events: auto;
   filter: none;
 }
-/* leve fade ao entrar conteúdo da tabela */
 .table-wrap{ animation: tabFadeIn .28s ease both; }
 @keyframes tabFadeIn{
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ===== TABELA COM CABEÇALHO FIXO ===== */
 .table-wrap{
   max-height: 460px;
   overflow: auto;
@@ -180,7 +167,6 @@ body{
 .table tbody tr{ position: relative; }
 .table tbody td{ position: relative; }
 
-/* ===== DROPDOWN (select) SEM FICAR ESCONDIDO ===== */
 .status-select{
   position: relative;
   z-index: 10;
@@ -188,7 +174,6 @@ body{
 }
 .table-wrap, .card, .content, .layout { z-index: 0; position: relative; }
 
-/* Dropdown abre pra cima quando faltar espaço */
 .status-menu.dropup{
   top: auto;
   bottom: 100%;
@@ -196,16 +181,10 @@ body{
   margin-bottom: 6px;
 }
 
-/* mantém o menu sempre acima de outros elementos */
 .status-menu{ z-index: 9999; }
-
-/* melhora clique/stacking do botão */
 .status-btn{ position: relative; z-index: 10; }
-
-/* evita que o menu seja “cortado” visualmente por sombras internas */
 .table tbody tr, .table tbody td { overflow: visible; }
 
-/* ---------- STATUS (menu e botão) ---------- */
 .status{ position: relative; display: inline-block; }
 .status-btn{
   display:inline-flex; align-items:center; gap:8px;
@@ -234,10 +213,8 @@ body{
 .status-opt.status--pago{ color: var(--ok); }
 .status-opt.status--nao{ color: #ff9aa6; }
 
-/* opcional: coluna “Ações” sem quebrar layout */
 .col-acoes{ width:1%; white-space:nowrap; }
 
-/* ===== Menu flutuante (fora da tabela) ===== */
 .status-float{
   position: fixed;
   top: 0; left: 0;
@@ -268,17 +245,14 @@ body{
 .status-item.pago{ color: var(--ok); }
 .status-item.nao { color: var(--danger); }
 
-/* melhora o botão que abre o menu */
 .status-btn{ position: relative; z-index: 1; }
 
-/* ===== TOAST ===== */
 .toast{
   position:fixed; right:16px; bottom:16px; background:#0e1327; border:1px solid var(--line);
   padding:14px 16px; border-radius:12px; display:none
 }
 .toast.show{display:block}
 
-/* ===== MODAL (pay) ===== */
 #payModal::backdrop{
   background: rgba(8, 12, 26, .65);
   backdrop-filter: blur(6px) saturate(.9);
@@ -294,7 +268,6 @@ body{
   box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.04) !important;
 }
 
-/* ===== ACESSIBILIDADE: reduzir movimento ===== */
 @media (prefers-reduced-motion: reduce){
   .tab, .table-wrap, #payModal[open], .nav-btn.active::after{
     animation:none !important;
@@ -302,16 +275,12 @@ body{
   }
 }
 
-/* === Ajuste de cantos do cabeçalho da tabela === */
-
-/* garanta que o container corte os cantos */
 .card .table-wrap{
-  overflow: hidden;                 /* corta o que passar dos cantos */
-  border-top-left-radius: 16px;     /* igual ao cartão */
+  overflow: hidden;
+  border-top-left-radius: 16px;
   border-top-right-radius: 16px;
 }
 
-/* o cabeçalho “sticky” precisa herdar o raio */
 .table thead th{
   position: sticky;
   top: 0;
@@ -319,10 +288,8 @@ body{
   background: rgba(11,16,39,.82);
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--line);
-  background-clip: padding-box;     /* evita “vazar” no raio */
+  background-clip: padding-box;
 }
-
-/* aplica o raio apenas nos extremos do cabeçalho */
 .table thead th:first-child{
   border-top-left-radius: 16px;
 }
@@ -330,19 +297,12 @@ body{
   border-top-right-radius: 16px;
 }
 
-/* remove qualquer “respiro” lateral que crie fenda */
 .table{
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0;                /* sem espaçamento entre células */
+  border-spacing: 0;
 }
 
-/* =========================
-   AJUSTES DA ABA EXTRATOS
-   (apenas adições — não remove nada)
-========================= */
-
-/* 1) Barra de filtros do Extratos */
 #tab-extratos .card .bar{
   display: grid !important;
   gap: 12px !important;
@@ -351,7 +311,6 @@ body{
   margin-bottom: 8px !important;
 }
 
-/* Linha 1: grid dos campos (Tipo/Período/De/Até) */
 #tab-extratos .card .bar > div:first-child{
   display: grid !important;
   gap: 8px !important;
@@ -359,13 +318,11 @@ body{
   align-items: end !important;
 }
 
-/* Mantém os dois primeiros blocos maiores (como no HTML) */
 #tab-extratos .card .bar > div:first-child > div:nth-child(1),
 #tab-extratos .card .bar > div:first-child > div:nth-child(2){
   grid-column: span 2;
 }
 
-/* Linha 2: busca + botões */
 #tab-extratos .card .bar > div:last-child{
   display: flex !important;
   gap: 8px !important;
@@ -373,13 +330,11 @@ body{
   flex-wrap: wrap !important;
 }
 
-/* Busca mais flexível */
 #tab-extratos #busca-extrato{
   flex: 1 1 260px;
   min-width: 220px;
 }
 
-/* Labels discretas e alinhadas */
 #tab-extratos label.muted{
   display: inline-block;
   margin-bottom: 6px;
@@ -387,45 +342,39 @@ body{
   color: var(--muted);
 }
 
-/* Inputs e selects com mesma “altura visual” */
 #tab-extratos .input{
-  height: 42px; /* combina com .btn */
+  height: 42px;
   padding-top: 10px;
   padding-bottom: 10px;
 }
 
-/* Botões da barra de filtro */
 #tab-extratos #btn-filtrar.btn{ min-width: 160px; }
 #tab-extratos #btn-limpar.btn { min-width: 120px; }
 
-/* 2) Cartões de listas “Depósitos” e “Pagamentos” */
 #tab-extratos [data-card="deps"],
 #tab-extratos [data-card="pags"]{
   margin-top: 14px;
 }
 
-/* Títulos dos cartões */
 #tab-extratos [data-card] > h3{
   margin: 0 0 10px;
   font-weight: 800;
   letter-spacing: .2px;
 }
 
-/* Colunas: valor à direita; data com fonte monoespaçada sutil */
 #tblExtratosDepositos td:nth-child(2),
-#tblExtratosPagamentos td:nth-child(2){ /* Valor */
+#tblExtratosPagamentos td:nth-child(2){
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 #tblExtratosDepositos td:nth-child(3),
-#tblExtratosPagamentos td:nth-child(3){ /* Data */
+#tblExtratosPagamentos td:nth-child(3){
   white-space: nowrap;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-/* 3) Responsividade dos filtros (quebra em telas menores) */
 @media (max-width: 1100px){
   #tab-extratos .card .bar > div:first-child{
     grid-template-columns: repeat(4, minmax(0,1fr)) !important;
@@ -440,27 +389,23 @@ body{
     grid-template-columns: repeat(2, minmax(0,1fr)) !important;
   }
   #tab-extratos .card .bar > div:first-child > div{
-    grid-column: span 2 !important; /* cada bloco em uma linha */
+    grid-column: span 2 !important;
   }
 }
 
-/* 4) Harmoniza espaçamento das tabelas em todas as abas */
 #tab-bancas .table-wrap,
 #tab-pagamentos .table-wrap,
 #tab-extratos .table-wrap{
-  max-height: 520px; /* um pouco mais alto na visão de extratos */
+  max-height: 520px;
 }
 
-/* 5) Garante que o botão "Bancas" (em Pagamentos) siga o estilo primary */
 #tab-pagamentos [data-action="to-banca"].btn{
-  /* já recebe .btn--primary no HTML; aqui só reforço sombras */
   box-shadow: 0 12px 30px rgba(110,140,255,.25), 0 8px 20px rgba(43,180,255,.18);
 }
 #tab-pagamentos [data-action="to-banca"].btn:hover{
   box-shadow: 0 10px 26px rgba(110,140,255,.18);
 }
 
-/* ===== Modal de Mensagem (mais legível) ===== */
 #msgModal.msg-modal { border: 0; padding: 0; background: transparent; }
 
 #msgModal.msg-modal::backdrop{
@@ -495,7 +440,6 @@ body{
   padding: 12px;
 }
 
-/* botões */
 #msgModal .msg-actions{
   display: flex;
   justify-content: center;
@@ -512,4 +456,7 @@ body{
   cursor: pointer;
 }
 
-@keyframes msg-pop { from { transform: translateY(6px) scale(.985); opacity: 0 } to { transform:none; opacity:1 } }
+@keyframes msg-pop { 
+  from { transform: translateY(6px) scale(.985); opacity: 0 } 
+  to { transform:none; opacity:1 } 
+}
