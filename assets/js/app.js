@@ -186,7 +186,8 @@ function ensurePixModal(){
   const qrWrap = document.createElement('div');
   qrWrap.className = 'pix-qr-wrap';
 
-  const img = document.create.createElement('img');
+  const img = document.createElement('img');
+
   img.id = 'pixQr';
   img.className = 'pix-qr';
   img.alt = 'QR Code do PIX';
