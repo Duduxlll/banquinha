@@ -131,23 +131,7 @@
   <script src="assets/js/app.js"></script>
 
   
-  <script>
-    (function () {
-      const ta = document.getElementById('mensagem');
-      const out = document.getElementById('r-msg');
-      const limit = 100; 
-
-      function update() {
-        if (!ta || !out) return;
-        const txt = (ta.value || '').trim();
-        out.textContent = txt
-          ? (txt.length > limit ? txt.slice(0, limit) + '…' : txt)
-          : '—';
-      }
-      ta && ta.addEventListener('input', update);
-      document.addEventListener('DOMContentLoaded', update);
-    })();
-  </script>
+  
   
 </body>
 </html>
