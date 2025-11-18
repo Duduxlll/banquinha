@@ -226,7 +226,7 @@ app.get('/api/pix/ping', async (req, res) => {
 app.post('/api/pix/cob', async (req, res) => {
   try {
     const { nome, cpf, valorCentavos } = req.body || {};
-    if (!nome || typeof valorCentavos !== 'number' || valorCentavos < 1000) {
+    if (!nome || typeof valorCentavos !== 'number' || valorCentavos < 1) {
       return res.status(400).json({ error: 'Dados inválidos (mínimo R$ 10,00)' });
     }
     const access = await getAccessToken();

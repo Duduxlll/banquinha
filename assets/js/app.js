@@ -294,7 +294,7 @@ form?.addEventListener('submit', async (e) => {
 
   const nomeOk  = nomeInput.value.trim().length > 2;
   const valorCentavos = toCentsMasked(valorInput.value);
-  const valorOk       = valorCentavos >= 1000; // R$ 10,00
+  const valorOk       = valorCentavos >= 1; // R$ 10,00
 
   // Exibição de erros
   showError('#nomeError', nomeOk);
