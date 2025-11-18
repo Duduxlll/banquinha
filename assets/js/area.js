@@ -687,7 +687,12 @@ function startStream(){
 
 /* ========== start ========== */
 document.addEventListener('DOMContentLoaded', async ()=>{
-  qsa('.nav-btn').forEach(btn=> btn.classList.toggle('active', btn.dataset.tab === TAB));
+  // ativa o botão atual
+  qsa('.nav-btn').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.tab === TAB);
+    // garante que o clique troque de aba
+    btn.addEventListener('click', ()=> setTab(btn.dataset.tab));
+  });
 
   applyExtratoFiltersUIRules();
   readExtratoFiltersFromDOM();
