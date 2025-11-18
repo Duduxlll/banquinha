@@ -1,5 +1,3 @@
-
-
 const API = window.location.origin;
 
 /* ===== Seletores ===== */
@@ -12,12 +10,17 @@ const form        = document.querySelector('#depositoForm');
 const toast       = document.querySelector('#toast');
 const btnSubmit   = document.querySelector('#btnDepositar');
 
+// [ADD mensagem] seletores da mensagem
+const mensagemInput = document.querySelector('#mensagem');
+
 // Resumo (sem r-cpf)
 const rNome    = document.querySelector('#r-nome');
 const rTipo    = document.querySelector('#r-tipo');
 const rChaveLi = document.querySelector('#r-chave-li') || document.querySelector('#resumo li:nth-child(3)');
 const rChave   = document.querySelector('#r-chave');
 const rValor   = document.querySelector('#r-valor');
+// [ADD mensagem] saída no resumo
+const rMsg     = document.querySelector('#r-msg');
 
 /* ===== Utils ===== */
 document.querySelector('#ano') && (document.querySelector('#ano').textContent = new Date().getFullYear());
@@ -38,16 +41,24 @@ function getMeta(name){
 
 
 // Salva UNIVERSAL no servidor validando (rota pública segura via TOKEN ou TXID)
-async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, chave }){
+// [ADD mensagem] agora aceita { message }
+async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, chave, message }){
   const APP_KEY = window.APP_PUBLIC_KEY || getMeta('app-key') || '';
-  // corpo aceita 'token' OU 'txid' — mandamos os dois; o servidor usa o que entender
   const res = await fetch(`${API}/api/pix/confirmar`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(APP_KEY ? { 'X-APP-KEY': APP_KEY } : {})
     },
-    body: JSON.stringify({ token: tokenOrTxid, txid: tokenOrTxid, nome, valorCentavos, tipo, chave })
+    body: JSON.stringify({
+      token: tokenOrTxid,
+      txid: tokenOrTxid,
+      nome,
+      valorCentavos,
+      tipo,
+      chave,
+      message: message || null // [ADD mensagem]
+    })
   });
   if (!res.ok) {
     let msg = `Falha ao confirmar (${res.status})`;
@@ -58,13 +69,15 @@ async function saveOnServerConfirmado({ tokenOrTxid, nome, valorCentavos, tipo, 
 }
 
 // Fallback local (visível só neste navegador)
-function saveLocal({ nome, valorCentavos, tipo, chave }){
+// [ADD mensagem] persiste message também
+function saveLocal({ nome, valorCentavos, tipo, chave, message }){
   const registro = {
     id: Date.now().toString(),
     nome,
     depositoCents: valorCentavos,
     pixType: tipo,
     pixKey:  chave,
+    message: message || null, // [ADD mensagem]
     createdAt: new Date().toISOString()
   };
   const bancas = JSON.parse(localStorage.getItem('bancas') || '[]');
@@ -76,6 +89,13 @@ function saveLocal({ nome, valorCentavos, tipo, chave }){
 
 // Nome > Resumo
 nomeInput?.addEventListener('input', () => rNome && (rNome.textContent = nomeInput.value.trim() || '—'));
+
+// [ADD mensagem] Mensagem > Resumo (preview)
+mensagemInput?.addEventListener('input', () => {
+  if (!rMsg) return;
+  const v = (mensagemInput.value || '').trim();
+  rMsg.textContent = v ? (v.length > 100 ? v.slice(0,100)+'…' : v) : '—';
+});
 
 // Alterna campo da chave conforme o tipo
 function updateTipoUI(){
@@ -263,6 +283,7 @@ form?.addEventListener('submit', async (e) => {
 
   const tipo = tipoSelect.value;
   const chaveVal = (chaveInput?.value || '').trim();
+  const messageVal = (mensagemInput?.value || '').trim(); // [ADD mensagem]
 
   // Validações por tipo
   let chaveOk = true;
@@ -329,7 +350,8 @@ form?.addEventListener('submit', async (e) => {
               nome: nomeInput.value.trim(),
               valorCentavos,
               tipo,
-              chave: chaveVal
+              chave: chaveVal,
+              message: messageVal // [ADD mensagem]
             });
           }catch(_err){
             // fallback local se o servidor recusar (não recomendado para produção)
@@ -337,7 +359,8 @@ form?.addEventListener('submit', async (e) => {
               nome: nomeInput.value.trim(),
               valorCentavos,
               tipo,
-              chave: chaveVal
+              chave: chaveVal,
+              message: messageVal // [ADD mensagem]
             });
             notify('Servidor não confirmou o registro — salvo localmente.', true, 4200);
           }

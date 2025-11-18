@@ -149,6 +149,8 @@ function renderBancas(){
 
   tbodyBancas.innerHTML = lista.length ? lista.map(b => {
     const bancaTxt = typeof b.bancaCents === 'number' ? fmtBRL(b.bancaCents) : '';
+    // [ADD mensagem] checa se há message
+    const hasMsg = !!(b.message && String(b.message).trim());
     return `
       <tr data-id="${b.id}">
         <td>${esc(b.nome)}</td>
@@ -157,8 +159,10 @@ function renderBancas(){
           <input type="text" class="input input-money" data-role="banca" data-id="${b.id}" placeholder="R$ 0,00" value="${bancaTxt}">
         </td>
         <td class="col-acoes">
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn--primary" data-action="to-pagamento" data-id="${b.id}">Pagamento</button>
+            <!-- [ADD mensagem] botão Ver mensagem -->
+            <button class="btn" data-action="ver-msg" data-id="${b.id}" ${hasMsg?'':'disabled'}>Ver mensagem</button>
             <button class="btn btn--danger"  data-action="del-banca"    data-id="${b.id}">Excluir</button>
           </div>
         </td>
@@ -176,6 +180,8 @@ function renderPagamentos(){
     const isPago = p.status === 'pago';
     const statusTxt = isPago ? 'Pago' : 'Não pago';
     const statusCls = isPago ? 'status--pago' : 'status--nao';
+    // [ADD mensagem] checa se há message
+    const hasMsg = !!(p.message && String(p.message).trim());
 
     return `
       <tr data-id="${p.id}">
@@ -195,6 +201,8 @@ function renderPagamentos(){
             <button class="btn btn--primary" data-action="to-banca" data-id="${p.id}">Bancas</button>
 
             <button class="btn btn--primary" data-action="fazer-pix" data-id="${p.id}">Fazer PIX</button>
+            <!-- [ADD mensagem] botão Ver mensagem -->
+            <button class="btn" data-action="ver-msg" data-id="${p.id}" ${hasMsg?'':'disabled'}>Ver mensagem</button>
             <button class="btn btn--danger"  data-action="del-pag"   data-id="${p.id}">Excluir</button>
           </div>
         </td>
@@ -403,6 +411,45 @@ function abrirPixModal(id){
   dlg.showModal();
 }
 
+/* ========== [ADD mensagem] Modal “Ver mensagem” ========== */
+let msgModalEl = null;
+function ensureMsgModal(){
+  if (msgModalEl) return msgModalEl;
+  const dlg = document.createElement('dialog');
+  dlg.id = 'msgModal';
+  dlg.style.border='0'; dlg.style.padding='0'; dlg.style.background='transparent';
+  const box = document.createElement('div');
+  box.style.width='min(94vw,520px)';
+  box.style.background='linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))';
+  box.style.border='1px solid rgba(255,255,255,.12)';
+  box.style.borderRadius='14px';
+  box.style.boxShadow='0 28px 80px rgba(0,0,0,.55)';
+  box.style.padding='16px'; box.style.color='#e7e9f3';
+  box.innerHTML = `
+    <h3 style="margin:0 0 8px;font-weight:800">Mensagem</h3>
+    <p id="msgText" style="white-space:pre-wrap;margin:0 0 12px;color:#cfd2e8"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn--ghost" data-action="close-msg">Fechar</button>
+    </div>
+  `;
+  dlg.appendChild(box);
+  document.body.appendChild(dlg);
+
+  dlg.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action="close-msg"]');
+    if (b) dlg.close();
+  });
+
+  msgModalEl = dlg;
+  return dlg;
+}
+function abrirMensagem(texto){
+  const dlg = ensureMsgModal();
+  const p = dlg.querySelector('#msgText');
+  p.textContent = (texto && String(texto).trim()) ? String(texto) : '(sem mensagem)';
+  dlg.showModal();
+}
+
 /* ========== MENU FLUTUANTE (PORTAL) — Pago / Não pago ========== */
 let statusMenuEl = null;
 let statusMenuId = null;
@@ -479,6 +526,18 @@ document.addEventListener('click', (e)=>{
     return;
   }
   if(!e.target.closest('.status-float')) hideStatusMenu();
+});
+
+// [ADD mensagem] handler global para abrir o modal de mensagem
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-action="ver-msg"]');
+  if(!btn) return;
+  const id = btn.dataset.id;
+  // tenta achar primeiro em bancas, depois em pagamentos
+  const b = STATE.bancas.find(x=>x.id===id);
+  const p = STATE.pagamentos.find(x=>x.id===id);
+  const msg = (b?.message ?? p?.message) || '';
+  abrirMensagem(msg);
 });
 
 // rolar/resize fecha menu

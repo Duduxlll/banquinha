@@ -275,7 +275,8 @@ app.post('/api/pix/confirmar', async (req, res) => {
     const key = req.get('X-APP-KEY');
     if (!key || key !== APP_PUBLIC_KEY) return res.status(401).json({ error:'unauthorized' });
 
-    const { token, nome, valorCentavos, tipo=null, chave=null } = req.body || {};
+    // [ADD mensagem] recebe message
+    const { token, nome, valorCentavos, tipo=null, chave=null, message=null } = req.body || {};
     if (!token || !nome || typeof valorCentavos !== 'number' || valorCentavos < 1) {
       return res.status(400).json({ error:'dados_invalidos' });
     }
@@ -293,18 +294,19 @@ app.post('/api/pix/confirmar', async (req, res) => {
     if (valorEfiCents == null) return res.status(500).json({ error:'valor_invalido_efi' });
     if (valorEfiCents !== valorCentavos) return res.status(409).json({ error:'valor_divergente' });
 
-    // 3) insere em bancas
+    // 3) insere em bancas (com message)
     const id = uid();
     const { rows } = await q(
-      `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
-       values ($1,$2,$3,$4,$5,$6, now())
+      `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, message, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7, now())
        returning id, nome,
                  deposito_cents as "depositoCents",
                  banca_cents    as "bancaCents",
                  pix_type       as "pixType",
                  pix_key        as "pixKey",
+                 message        as "message",
                  created_at     as "createdAt"`,
-      [id, nome, valorCentavos, null, tipo, chave]
+      [id, nome, valorCentavos, null, tipo, chave, message] // [ADD mensagem]
     );
 
     // 3.1) registra no extrato (DEPÓSITO) com ref_id = id da banca
@@ -333,18 +335,19 @@ app.post('/api/public/bancas', async (req, res) => {
     const key = req.get('X-APP-KEY');
     if (!key || key !== APP_PUBLIC_KEY) return res.status(401).json({ error:'unauthorized' });
 
-    const { nome, depositoCents, pixType=null, pixKey=null } = req.body || {};
+    // [ADD mensagem] aceita message
+    const { nome, depositoCents, pixType=null, pixKey=null, message=null } = req.body || {};
     if (!nome || typeof depositoCents !== 'number' || depositoCents <= 0) {
       return res.status(400).json({ error: 'dados_invalidos' });
     }
 
     const id = uid();
     const { rows } = await q(
-      `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
-       values ($1,$2,$3,$4,$5,$6, now())
+      `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, message, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7, now())
        returning id, nome, deposito_cents as "depositoCents", banca_cents as "bancaCents",
-                 pix_type as "pixType", pix_key as "pixKey", created_at as "createdAt"`,
-      [id, nome, depositoCents, null, pixType, pixKey]
+                 pix_type as "pixType", pix_key as "pixKey", message as "message", created_at as "createdAt"`,
+      [id, nome, depositoCents, null, pixType, pixKey, message] // [ADD mensagem]
     );
 
     // registra depósito manual no extrato (ref_id = id da banca)
@@ -373,6 +376,7 @@ app.get('/api/bancas', areaAuth, async (req, res) => {
             banca_cents    as "bancaCents",
             pix_type       as "pixType",
             pix_key        as "pixKey",
+            message        as "message",   -- [ADD mensagem]
             created_at     as "createdAt"
      from bancas
      order by created_at desc`
@@ -381,17 +385,17 @@ app.get('/api/bancas', areaAuth, async (req, res) => {
 });
 
 app.post('/api/bancas', areaAuth, async (req, res) => {
-  const { nome, depositoCents, pixType=null, pixKey=null } = req.body || {};
+  const { nome, depositoCents, pixType=null, pixKey=null, message=null } = req.body || {}; // [ADD mensagem]
   if (!nome || typeof depositoCents !== 'number' || depositoCents <= 0) {
     return res.status(400).json({ error: 'dados_invalidos' });
   }
   const id = uid();
   const { rows } = await q(
-    `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
-     values ($1,$2,$3,$4,$5,$6, now())
+    `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, message, created_at)
+     values ($1,$2,$3,$4,$5,$6,$7, now())
      returning id, nome, deposito_cents as "depositoCents", banca_cents as "bancaCents",
-               pix_type as "pixType", pix_key as "pixKey", created_at as "createdAt"`,
-    [id, nome, depositoCents, null, pixType, pixKey]
+               pix_type as "pixType", pix_key as "pixKey", message as "message", created_at as "createdAt"`,
+    [id, nome, depositoCents, null, pixType, pixKey, message] // [ADD mensagem]
   );
 
   sseSendAll('bancas-changed', { reason: 'insert' });
@@ -411,6 +415,7 @@ app.patch('/api/bancas/:id', areaAuth, async (req, res) => {
                banca_cents    as "bancaCents",
                pix_type       as "pixType",
                pix_key        as "pixKey",
+               message        as "message",   -- [ADD mensagem]
                created_at     as "createdAt"`,
     [req.params.id, bancaCents]
   );
@@ -427,7 +432,7 @@ app.post('/api/bancas/:id/to-pagamento', areaAuth, async (req, res) => {
     await client.query('begin');
 
     const sel = await client.query(
-      `select id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at
+      `select id, nome, deposito_cents, banca_cents, pix_type, pix_key, message, created_at
        from bancas where id = $1 for update`,
       [req.params.id]
     );
@@ -439,9 +444,9 @@ app.post('/api/bancas/:id/to-pagamento', areaAuth, async (req, res) => {
       : (typeof b.banca_cents === 'number' && b.banca_cents > 0 ? b.banca_cents : b.deposito_cents);
 
     await client.query(
-      `insert into pagamentos (id, nome, pagamento_cents, pix_type, pix_key, status, created_at, paid_at)
-       values ($1,$2,$3,$4,$5,'nao_pago',$6,null)`,
-      [b.id, b.nome, bancaFinal, b.pix_type, b.pix_key, b.created_at]
+      `insert into pagamentos (id, nome, pagamento_cents, pix_type, pix_key, message, status, created_at, paid_at)
+       values ($1,$2,$3,$4,$5,$6,'nao_pago',$7,null)`,
+      [b.id, b.nome, bancaFinal, b.pix_type, b.pix_key, b.message || null, b.created_at] // [ADD mensagem]
     );
     await client.query(`delete from bancas where id = $1`, [b.id]);
 
@@ -465,7 +470,7 @@ app.post('/api/pagamentos/:id/to-banca', areaAuth, async (req, res) => {
     await client.query('begin');
 
     const sel = await client.query(
-      `select id, nome, pagamento_cents, pix_type, pix_key, created_at
+      `select id, nome, pagamento_cents, pix_type, pix_key, message, created_at
          from pagamentos where id = $1 for update`,
       [req.params.id]
     );
@@ -473,9 +478,9 @@ app.post('/api/pagamentos/:id/to-banca', areaAuth, async (req, res) => {
     const p = sel.rows[0];
 
     await client.query(
-      `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7)`,
-      [p.id, p.nome, p.pagamento_cents, p.pagamento_cents, p.pix_type, p.pix_key, p.created_at]
+      `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, message, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [p.id, p.nome, p.pagamento_cents, p.pagamento_cents, p.pix_type, p.pix_key, p.message || null, p.created_at] // [ADD mensagem]
     );
     await client.query(`delete from pagamentos where id = $1`, [p.id]);
 
@@ -505,6 +510,7 @@ app.get('/api/pagamentos', areaAuth, async (req, res) => {
             pagamento_cents as "pagamentoCents",
             pix_type        as "pixType",
             pix_key         as "pixKey",
+            message         as "message",     -- [ADD mensagem]
             status,
             created_at      as "createdAt",
             paid_at         as "paidAt"
@@ -535,6 +541,7 @@ app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
                pagamento_cents as "pagamentoCents",
                pix_type as "PixType",
                pix_key  as "pixKey",
+               message  as "message",        -- [ADD mensagem]
                status, created_at as "createdAt", paid_at as "paidAt"`,
     [req.params.id, status]
   );
@@ -606,8 +613,26 @@ app.get('/api/extratos', areaAuth, async (req, res) => {
   res.json(rows);
 });
 
+/* -----------------------------
+   [ADD mensagem] — Garantir colunas
+   Executa ao subir o servidor:
+   - adiciona coluna message em bancas/pagamentos se não existir
+------------------------------*/
+async function ensureMessageColumns(){
+  try{
+    await q(`alter table if exists bancas add column if not exists message text`);
+    await q(`alter table if exists pagamentos add column if not exists message text`);
+  }catch(e){
+    console.error('ensureMessageColumns:', e.message);
+  }
+}
+
 app.listen(PORT, async () => {
-  try{ await q('select 1'); console.log('🗄️  Postgres conectado'); }
+  try{
+    await q('select 1');
+    await ensureMessageColumns(); // [ADD mensagem]
+    console.log('🗄️  Postgres conectado');
+  }
   catch(e){ console.error('❌ Postgres falhou:', e.message); }
   console.log(`✅ Server rodando em ${ORIGIN} (NODE_ENV=${process.env.NODE_ENV||'dev'})`);
   console.log(`🗂  Servindo estáticos de: ${ROOT}`);

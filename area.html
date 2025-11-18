@@ -164,6 +164,24 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- [ADD mensagem] Modal reutilizável para “Ver mensagem” -->
+  <dialog id="msgModal" style="border:0; padding:0; background:transparent;">
+    <div style="
+      width:min(94vw,520px);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      box-shadow:0 28px 80px rgba(0,0,0,.55);
+      padding:16px; color:#e7e9f3;">
+      <h3 style="margin:0 0 8px; font-weight:800">Mensagem</h3>
+      <p id="msgText" style="white-space:pre-wrap; margin:0 0 12px; color:#cfd2e8"></p>
+      <div style="display:flex; gap:8px; justify-content:flex-end">
+        <button class="btn btn--ghost" data-action="close-msg">Fechar</button>
+      </div>
+    </div>
+  </dialog>
+  <!-- /[ADD mensagem] -->
+
   <!-- Ordem correta: primeiro sessão, depois área -->
   <script src="assets/js/session.js" defer></script>
   <script src="assets/js/area.js" defer></script>
