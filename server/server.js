@@ -1,4 +1,4 @@
-// server/server.js — versão com Extratos (depósitos + pagamentos) e filtros (corrigido ref_id)
+// server/server.js — versão com Extratos (depósitos + pagamentos) e filtros (corrigido ref_id + extrato após delete)
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
@@ -346,7 +346,7 @@ app.post('/api/public/bancas', async (req, res) => {
       `insert into bancas (id, nome, deposito_cents, banca_cents, pix_type, pix_key, message, created_at)
        values ($1,$2,$3,$4,$5,$6,$7, now())
        returning id, nome, deposito_cents as "depositoCents", banca_cents as "bancaCents",
-                 pix_type as "pixType", pix_key as "pixKey", message as "message", created_at as "createdAt"`,
+                 pix_type as "PixType", pix_key as "pixKey", message as "message", created_at as "createdAt"`,
       [id, nome, depositoCents, null, pixType, pixKey, message] // [ADD mensagem]
     );
 
@@ -530,7 +530,6 @@ app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
     [req.params.id]
   );
   if (!beforeQ.rows.length) return res.status(404).json({ error:'not_found' });
-  const before = beforeQ.rows[0];
 
   const { rows } = await q(
     `update pagamentos
@@ -541,31 +540,69 @@ app.patch('/api/pagamentos/:id', areaAuth, async (req, res) => {
                pagamento_cents as "pagamentoCents",
                pix_type as "PixType",
                pix_key  as "pixKey",
-               message  as "message",        -- [ADD mensagem]
                status, created_at as "createdAt", paid_at as "paidAt"`,
     [req.params.id, status]
   );
   if (!rows.length) return res.status(404).json({ error:'not_found' });
 
-  // se mudou de nao_pago -> pago, registra extrato (ref_id = id do pagamento)
-  if (status === 'pago' && before.status !== 'pago') {
-    await q(
-      `insert into extratos (id, ref_id, nome, tipo, valor_cents, created_at)
-       values ($1,$2,$3,'pagamento',$4, coalesce($5, now()))`,
-      [uid(), rows[0].id, rows[0].nome, rows[0].pagamentoCents, rows[0].paidAt]
-    );
-    sseSendAll('extratos-changed', { reason: 'pagamento' });
-  }
+  // >>> NÃO insere mais no extrato aqui. <<<
+  // O extrato será criado no DELETE (auto-delete após ~3 min).
 
   sseSendAll('pagamentos-changed', { reason: 'update-status' });
   res.json(rows[0]);
 });
 
+// ===== DELETE pagamentos -> agora cria EXTRATO se estava pago (após auto-delete) =====
 app.delete('/api/pagamentos/:id', areaAuth, async (req, res) => {
-  const r = await q(`delete from pagamentos where id = $1`, [req.params.id]);
-  if (r.rowCount === 0) return res.status(404).json({ error:'not_found' });
-  sseSendAll('pagamentos-changed', { reason: 'delete' });
-  res.json({ ok:true });
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+
+    // Busca o pagamento antes de deletar
+    const sel = await client.query(
+      `select id, nome, pagamento_cents, status, paid_at
+         from pagamentos
+        where id = $1
+        for update`,
+      [req.params.id]
+    );
+    if (!sel.rows.length) {
+      await client.query('rollback');
+      return res.status(404).json({ error:'not_found' });
+    }
+    const p = sel.rows[0];
+
+    // Se estava PAGO, só agora registramos no extrato (tipo 'pagamento')
+    let insertedExtrato = false;
+    if (p.status === 'pago') {
+      await client.query(
+        `insert into extratos (id, ref_id, nome, tipo, valor_cents, created_at)
+         values ($1,$2,$3,'pagamento',$4, coalesce($5, now()))`,
+        [uid(), p.id, p.nome, p.pagamento_cents, p.paid_at]
+      );
+      insertedExtrato = true;
+    }
+
+    // Agora deleta
+    const del = await client.query(`delete from pagamentos where id = $1`, [p.id]);
+    if (del.rowCount === 0) {
+      await client.query('rollback');
+      return res.status(404).json({ error:'not_found' });
+    }
+
+    await client.query('commit');
+
+    if (insertedExtrato) sseSendAll('extratos-changed', { reason: 'pagamento-finalizado' });
+    sseSendAll('pagamentos-changed', { reason: 'delete' });
+
+    return res.json({ ok:true });
+  } catch (e) {
+    await client.query('rollback');
+    console.error('delete pagamento:', e.message);
+    return res.status(500).json({ error:'falha_delete' });
+  } finally {
+    client.release();
+  }
 });
 
 // ===== EXTRATOS (com filtros) =====
